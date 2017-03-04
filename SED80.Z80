@@ -13,31 +13,135 @@ BDOS	EQU 	0005h	; BDOS function vector
 ;
 ; BDOS function codes
 ;
-C_WRITE		EQU	02h	; Console out, E=character.
+C_READ		EQU	01h	; Console input, A=L=character received
+C_WRITE		EQU	02h	; Console out, E=character to output
+C_RAWIO		EQU	06h	; Console I/O, E=FF:Input FE:Status XX:Output
 C_WRITESTR	EQU	09h	; Output $-terminated string at DE
 
 ;
 ; ASCII key codes
 ;
-ESC	EQU	01Bh	; ESCAPE
+LF	EQU	0Ah	; ^H LF
+CR 	EQU 	0Dh	; ^M CR/ENTER
+ESC	EQU	1Bh	;    ESCAPE
 
 
 ;
 ; Start of code
 ;
 	ORG 0100h
+
 	ld	HL,MSG_CLEAR
 	call	OUTSTR
+	call	InverseText
 	ld	HL,MSG_HEADER
 	call	OUTSTR
+	call	NormalText
 
-	jp	WBOOT	
+loop:
+	call	ShowRowCol
+	call	GetChar
+	cp 	A,ESC
+	jp 	Z,HandleESC
+	jp 	loop
+
+HandleESC:
+	; ld	HL,row
+	; inc	(HL)
+
+	call	GetChar		; Check if next character is an O indicating
+	cp 	A,'O'		; a function key?
+	jp	Z,HandleFkeys
+
+	cp 	A,'['		; an arrow key?
+	jp	Z,HandleArrowKeys
+	jp 	loop		; Go back to loop if unrecognized
+
+HandleArrowKeys:
+	call	GetChar		; Now get the "action" character for Arrows
+	cp 	A,'A'		; ARROW UP ?
+	jp	Z,KeyUp
+	cp 	A,'B'		; ARROW DOWN ?
+	jp	Z,KeyDown
+	cp 	A,'C'		; ARROW RIGHT ?
+	jp	Z,KeyRight
+	cp 	A,'D'		; ARROW LEFT ?
+	jp	Z,KeyLeft
+	jp	loop
+
+HandleFkeys:
+	call	GetChar		; Now get the "action" character for Fx
+	cp 	A,'P'		; F1 ?
+	jp	Z,KeyF1
+	cp 	A,'Q'		; F2 ?
+	jp	Z,KeyF2
+	cp 	A,'R'		; F3 ?
+	jp	Z,KeyF3
+	cp 	A,'S'		; F4 ?
+	jp	Z,KeyF4
+	jp 	loop
+
+KeyF1   jp	loop
+
+KeyF2   jp	loop
+
+KeyF3   jp	loop
+
+KeyF4   jp	loop
+
+KeyUp
+	ld	A,(row)
+	cp	A,0
+	jp	Z,loop
+	dec	A
+	ld 	(row),A
+	jp	loop
+
+KeyDown
+	ld	A,(row)
+	cp	A,22
+	jp	Z,loop
+	inc	A
+	ld 	(row),A
+	jp	loop
+
+KeyRight
+	ld	A,(col)
+	cp	A,79
+	jp	Z,loop
+	inc	A
+	ld 	(col),A
+	jp	loop
+
+KeyLeft
+	ld	A,(col)
+	cp	A,0
+	jp	Z,loop
+	dec	A
+	ld 	(col),A
+	jp	loop
+
+	jp	WBOOT
+
+
+
+;
+; Waits for a character to become available and
+; returns it in A without echo.
+;
+GetChar:
+	ld	C,C_RAWIO
+	ld 	E,0FFh		; FF=Read, FE=Status
+	call	BDOS
+	cp 	A,00h		; No char available?
+	jp 	Z,GetChar	; Loop until got a char
+	ret
 
 
 ;
 ; Print message at HL until 0
 ;
-OUTSTR:	
+OUTSTR:
 	ld	A,(HL)
 	or	A		; Check if got zero?
 	ret	Z		; If zero return to caller
@@ -49,13 +153,134 @@ OUTSTR:
 	inc	HL
 	jp	OUTSTR
 
+
+
+;
+;	B=LINE C=COLUMN
+;
+GotoXY:
+	push	BC
+	ld	E,ESC
+	ld	C,C_WRITE
+	call	BDOS
+
+	ld	E,'['
+	ld	C,C_WRITE
+	call	BDOS
+
+	pop	BC
+	push	BC
+	ld	L,B
+	inc 	L
+	call	PrintDec2
+
+	ld	E,';'
+	ld	C,C_WRITE
+	call	BDOS
+
+	pop	BC
+	ld	L,C
+	inc	L
+	call	PrintDec2
+
+	ld	E,'H'
+	ld	C,C_WRITE
+	call	BDOS
+	ret
+
+;
+; Updates the Row and Column info at the top header line
+;
+ShowRowCol:
+	call	InverseText	; The header line is inverse
+	ld	BC, XY_ROW	; Coordinates for the Row-field
+	call	GotoXY
+	ld 	HL, (row)	; Get the row and incremet by one since
+	inc	HL		; 1,1 is the first character on the screen
+	call 	PrintDec4
+	ld	BC, XY_COL	; Coordinates for the Column field
+	call	GotoXY
+	ld 	A, (col)
+	ld	L,A
+	inc 	L
+	call 	PrintDec2
+	call	NormalText	; Go back to normal text again
+	ret
+
+;
+; Output the code sequence for displaying inverse text
+;
+InverseText:
+	ld	HL,MSG_INVERSETEXT
+	jp	OUTSTR
+
+;
+; Output the code sequence for displaying normal text
+;
+NormalText:
+	ld	HL,MSG_NORMALTEXT
+	jp	OUTSTR
+
+
+;
+; PrintDec2 / PrintDec4
+;
+; Print number in HL as a 2 or 4 digit decimal ASCII string with
+; leading zeros
+;
+; Input:	HL = number to print
+; Destroys: 	AF, BC, HL, DE
+;
+PrintDec4:
+	ld	BC,-1000
+	call	PrintDecA
+	ld	BC,-100
+	call	PrintDecA
+PrintDec2:
+	ld	H,0		; Make sure only L is considered...
+	ld	BC,-10		; ... from this point forward
+	call	PrintDecA
+	ld	BC,-1
+PrintDecA:
+	ld	A,'0'-1
+PrintDecB:
+	inc	A
+	add	HL,BC
+	jr	C,PrintDecB
+	sbc	HL,BC
+	push	HL
+	ld	E,A
+	ld	C,C_WRITE
+	call	BDOS
+	pop	HL
+	ret
+
+;
+; Static text/message strings
+;
+
 MSG_CLEAR
 	DB	ESC,'[2J',ESC,'[H',0
 
+MSG_INVERSETEXT
+	DB	ESC,'[7m',0
+
+MSG_NORMALTEXT
+	DB	ESC,'[0m',0
+
 MSG_HEADER
 	;        01234567890123456789012345678901234567890123456789012345678901234567890123456789
-	DB	ESC,'[7m'
-	DB	' XXXXXXXX.XXX * Row 0000 Col 00                                                 '
-	DB	ESC,'[0m',0
+	DB	' FILENAME.EXT * Row ---- Col --                                                 ',0
+
+XY_ROW 	EQU	00*256 + 20
+XY_COL	EQU	00*256 + 29
+
+
+;
+; Variables
+;
+
+row 	DW	17	; Current row/line in the editor
+col 	DB	35	; Current column in the editor
 
 	END
