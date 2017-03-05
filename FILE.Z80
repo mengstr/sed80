@@ -1,0 +1,90 @@
+;
+;
+;
+LoadFile:
+	call	ClearMemory	; Make sure the buffers and pointers are
+				; emptied
+
+	ld  	DE,DFCB		; Open the file using the name that CCP
+	ld 	C,OPENFIL	; conveniently inserted for us
+	call	BDOS		; Returns A in 255 if error opening
+	inc 	A
+	jp	Z,FileNotFound
+
+;
+; IX 	Src pointer into the disk read buffer
+; IY 	Dst pointer into the text buf in memory
+; cnt 	Keeps track of the bytes in each sector
+;
+
+	ld	IY,textBuf	; IY points to textBuf
+
+	ld	A,0FFh		; Set row to -1 so the SaveRowAddress
+	ld	(row),A		; can start by a increment row and have
+	ld	(row+1),A	; the first row end up indicating index 0
+
+	call	SaveRowAddress	; This first pointer must be save outside of
+				; the loop since they are written when a LF is
+				; found in the text - and there is no LF at the
+				; beginning of the first line.
+
+GetFirstSector
+	ld 	A,0		; Start reading from block 0
+	ld	(DFCBcr),A
+GetNextSector
+	ld  	DE,DFCB		; File Description Block
+	ld 	C,READSEQ
+	call	BDOS		; Returns A=0 if ok
+	cp	A,0
+	jp	NZ,AtEOF
+
+	ld	DE,dbuf		; Reset DMA address to our buffer
+	ld 	C,PUTDMA
+	call	BDOS
+
+	ld	IX,dbuf		; Point to beginning of disk buffer
+	ld	A,128		; The sector have 128 bytes
+	ld 	(cnt),A
+
+foo:	ld	A,(IX+0)	; Get next char from disk buf
+	cp	A,CR
+	jp	Z,doNextChar
+	cp	A,LF
+	jp	Z,theEol
+apa:
+	ld	(IY+0),A
+	inc	IY
+	jp	doNextChar
+theEol:
+	ld	A,0		; Store 0 at the end of line
+	ld	(IY+0),A
+	inc	IY		; bump up pointer
+	call	SaveRowAddress	; and save it into the line pointers array
+	jp	doNextChar
+
+doNextChar:
+	inc	IX		; Point to next char in disk buf
+	ld	A,(cnt)
+	dec 	A
+	ld	(cnt),A
+	jp	NZ,foo		; We still have more characters in current sector
+
+	jp	GetNextSector	; This sector is finished, get a new sector
+
+AtEOF:
+	ret
+
+
+SaveRowAddress:
+	ld	HL,(row)	; row=row+1
+	inc	HL
+	ld	(row),HL
+	add	HL,HL		; multiply row*2 and add the address to the
+	ld	BC,txtPtrs	; txtPtrs
+	add	HL,BC		; HL now points to the slot in txtPtrs
+	push	IY		; IY holds the address to the line buffer
+	pop	BC		; Copy IY-> to BC so we can store the address
+	ld	(HL),B		; Store high part of address
+	inc	HL
+	ld	(HL),C		; Store low part of address
+	ret

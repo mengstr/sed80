@@ -73,79 +73,10 @@ ESC	EQU	1Bh	;    ESCAPE
 	jp	Start
 
 #include "UTILS.Z80"
+#include "FILE.Z80"
 
 Start:
-	call	ClearMemory
-
-	ld  	DE,DFCB		; File Description Block
-	ld 	C,OPENFIL
-	call	BDOS		; error if A is 255
-	inc 	A
-	jp	Z,FileNotFound
-
-;
-; IX 	Src pointer into the disk read buffer
-; IY 	Dst pointer into the text buf in memory
-; cnt 	Keeps track of the bytes in each sector
-;
-
-	ld	IY,textBuf	; IY points to textBuf
-	ld	A,0FFh		; Set row to -1 so the SaveRowAddress
-	ld	(row),A		; can start by a increment row and have
-	ld	(row+1),A	; the first row end up indicating index 0
-
-	call	SaveRowAddress
-
-	push	IY		; Not sure if the disk read destroys IY
-	ld 	A,0		; Start reading from block 0
-	ld	(DFCBcr),A
-	ld  	DE,DFCB		; File Description Block
-	ld 	C,READSEQ
-	call	BDOS		; error if A is 255
-	pop	IY
-
-	ld	IX,dbuf
-	ld	A,128
-	ld 	(cnt),A
-foo:	ld	A,(IX+0)	; Get next char from disk buf
-	cp	A,CR
-	jp	Z,doNextChar
-	cp	A,LF
-	jp	Z,theEol
-apa:
-	ld	(IY+0),A
-	inc	IY
-	jp	doNextChar
-theEol:
-	ld	A,0		; Store 0 at the end of line
-	ld	(IY+0),A
-	inc	IY		; bump up pointer
-	call	SaveRowAddress	; and save it into the line pointers array
-	jp	doNextChar
-
-doNextChar:
-	inc	IX		; Point to next char in disk buf
-	ld	A,(cnt)
-	dec 	A
-	ld	(cnt),A
-	jp	NZ,foo
-	jp	Edit
-
-SaveRowAddress:
-	ld	HL,(row)	; row=row+1
-	inc	HL
-	ld	(row),HL
-	add	HL,HL		; multiply row*2 and add the address to the
-	ld	BC,txtPtrs	; txtPtrs
-	add	HL,BC		; HL now points to the slot in txtPtrs
-	push	IY		; IY holds the address to the line buffer
-	pop	BC		; Copy IY-> to BC so we can store the address
-	ld	(HL),B		; Store high part of address
-	inc	HL
-	ld	(HL),C		; Store low part of address
-	ret
-
-Edit:
+	call	LoadFile
 	call	RefreshFullScreen
 
 MainLoop:
