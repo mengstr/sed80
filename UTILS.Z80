@@ -1,0 +1,181 @@
+;
+; Waits for a character to become available and
+; returns it in A without echo.
+;
+GetChar:
+	ld	C,DIRCIO
+	ld 	E,0FFh		; FF=Read, FE=Status
+	call	BDOS
+	cp 	A,00h		; No char available?
+	jp 	Z,GetChar	; Loop until got a char
+	ret
+
+;
+;
+;
+Exit:
+	ld	BC,23*256+0
+	call	GotoXY
+	call	ClearEOL
+	jp	RESET
+
+;
+;
+;
+FileNotFound:
+	ld	HL,MSG_FILENOTFOUND
+	call	PrintString0
+	jp	RESET
+
+
+;
+; Fills the variable and buffer memory areas all the way up to and
+; the CCP part of the CP/M with zeros
+;
+ClearMemory:
+	ld	HL,(6)		; 6&7 holds pointer to BDOS
+	ld	L,0
+	ld	BC,VARIABLES
+	or	A 		; Clear carry for the sbc instruction
+	sbc	HL,BC
+	ld	BC,128		; Need to bump if down a bit, don't
+	sbc	HL,BC		; know why. ISSUE#1
+	ld	BC,HL		; BC=length of block in bytes
+
+	ld	HL,VARIABLES	; HL=start address of block
+	ld 	E,L			; DE=HL+1
+	ld 	D,H
+	inc 	DE
+	ld 	(HL),0		; initialise first byte of block with data
+
+	ldir   			; Now blast-fill the memory!
+	ret
+
+;
+; Print message at HL until 0, returns number of printed characters in B
+;
+PrintString0:
+	ld 	C,0
+PrintString0A:
+	ld	A,(HL)
+	or	A		; Check if got zero?
+	ret	Z		; If zero return to caller
+	push	HL		; else print the character
+	push	BC
+	ld	E,A
+	ld	C,DIRCIO
+	call	BDOS
+	pop	BC
+	pop	HL
+	inc	B
+	inc	HL
+	jp	PrintString0A
+
+
+
+;
+;	B=LINE C=COLUMN
+;
+GotoXY:
+	push	BC
+	ld	E,ESC
+	ld	C,DIRCIO
+	call	BDOS
+
+	ld	E,'['
+	ld	C,DIRCIO
+	call	BDOS
+
+	pop	BC
+	push	BC
+	ld	L,B
+	inc 	L
+	call	PrintDec2
+
+	ld	E,';'
+	ld	C,DIRCIO
+	call	BDOS
+
+	pop	BC
+	ld	L,C
+	inc	L
+	call	PrintDec2
+
+	ld	E,'H'
+	ld	C,DIRCIO
+	call	BDOS
+	ret
+
+;
+; Updates the Row and Column info at the top header line
+;
+ShowRowCol:
+	call	InverseText	; The header line is inverse
+	ld	BC, XY_ROW	; Coordinates for the Row-field
+	call	GotoXY
+	ld 	HL, (row)	; Get the row and incremet by one since
+	inc	HL		; 1,1 is the first character on the screen
+	call 	PrintDec4
+	ld	BC, XY_COL	; Coordinates for the Column field
+	call	GotoXY
+	ld 	A, (col)
+	ld	L,A
+	inc 	L
+	call 	PrintDec2
+	call	NormalText	; Go back to normal text again
+	ret
+
+;
+; Output the code sequence for displaying inverse text
+;
+InverseText:
+	ld	HL,MSG_INVERSETEXT
+	jp	PrintString0
+
+;
+; Output the code sequence for displaying normal text
+;
+NormalText:
+	ld	HL,MSG_NORMALTEXT
+	jp	PrintString0
+
+;
+;
+;
+ClearEOL:
+	ld	HL,MSG_CLREOL
+	jp 	PrintString0
+
+
+;
+; PrintDec2 / PrintDec4
+;
+; Print number in HL as a 2 or 4 digit decimal ASCII string with
+; leading zeros
+;
+; Input:	HL = number to print
+; Destroys: 	AF, BC, HL, DE
+;
+PrintDec4:
+	ld	BC,-1000
+	call	PrintDecA
+	ld	BC,-100
+	call	PrintDecA
+PrintDec2:
+	ld	H,0		; Make sure only L is considered...
+	ld	BC,-10		; ... from this point forward
+	call	PrintDecA
+	ld	BC,-1
+PrintDecA:
+	ld	A,'0'-1
+PrintDecB:
+	inc	A
+	add	HL,BC
+	jr	C,PrintDecB
+	sbc	HL,BC
+	push	HL
+	ld	E,A
+	ld	C,DIRCIO
+	call	BDOS
+	pop	HL
+	ret

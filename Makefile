@@ -40,6 +40,7 @@ flash: $(TARGET).hex
 	@echo HEX2COM...
 	@sleep 2
 	@echo "A:LOAD $(TARGET)" > /dev/ttyUSB0
+	@echo -n "SED80 TESTFILE.TXT" > /dev/ttyUSB0
 	@$(SERIAL) -load cpm8266 -sercfg $(EMULATIONBAUD)
 		
 clean:

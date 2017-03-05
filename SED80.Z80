@@ -7,43 +7,155 @@
 ;
 ;	Common entry points and locations
 ;
-WBOOT	EQU	0000h	; Warm boot/Reset vector
+RESET	EQU	0000h	; Warm boot/Reset vector
 BDOS	EQU 	0005h	; BDOS function vector
+DFCB	EQU	5CH	; Default File Control Block
+DFCBcr	EQU 	DFCB+32 ; Current record
+dbuf	EQU	0080h
 
 ;
 ; BDOS function codes
 ;
-C_READ		EQU	01h	; Console input, A=L=character received
-C_WRITE		EQU	02h	; Console out, E=character to output
-C_RAWIO		EQU	06h	; Console I/O, E=FF:Input FE:Status XX:Output
-C_WRITESTR	EQU	09h	; Output $-terminated string at DE
+
+;WBOOT	 EQU	0	; System Reset
+;GETCON	 EQU	1	; Console Input A<char
+;OUTCON	 EQU	2	; Console Output E=char
+;GETRDR	 EQU	3	; Reader Input A<char
+;PUNCH	 EQU	4	; Punch Output E=char
+;LIST	 EQU	5	; List Output E=char
+DIRCIO	 EQU	6	; Direct Console I/O E=char/FE/FF A<char
+;GETIOB	 EQU	7	; Get I/O Byte A<value
+;SETIOB	 EQU	8	; Set I/O Byte E=value
+;PRTSTR	 EQU	9	; Print $ String DE=addr
+;RDBUFF	 EQU	10	; Read Console Buffer DE=addr
+;GETCSTS EQU	11	; Get Console Status A<status (00empty FFdata)
+;GETVER	 EQU	12	; Return Version Number HL<version
+RSTDSK	 EQU	13	; Reset Disk System
+;SETDSK	 EQU	14	; Select Disk E=diskno
+OPENFIL	 EQU	15	; Open File DE=FCBaddr A<handle (FFerr)
+CLOSEFIL EQU	16	; Close File DE=FCBaddr A<handle (FFerr)
+;GETFST	 EQU	17	; Search for First DE=FCBaddr A<handle (FFerr)
+;GETNXT	 EQU	18	; Search for Next A<handle (FFerr)
+DELFILE	 EQU	19	; Delete File DE=FCBaddr A<handle (FFerr)
+READSEQ	 EQU	20	; Read Sequential DE=FCBaddr A<status (00ok)
+WRTSEQ	 EQU	21	; Write Sequential DE=FCBaddr A<status (00ok)
+FCREATE	 EQU	22	; Make File  DE=FCBaddr A<handle (FFerr)
+RENFILE	 EQU	23	; Rename File DE=FCBaddr A<handle (FFerr)
+;GETLOG	 EQU	24	; Return Log-in Vector HL<bitmap
+;GETCRNT EQU	25	; Return Current Disk A<diskno
+PUTDMA	 EQU	26	; Set DMA Address DE=addr
+;GETALOC EQU	27	; Get Addr (ALLOC) HL<addr
+;WRTPRTD EQU	28	; Write Protect Current Disk
+;GETROV	 EQU	29	; Get Read-Only Vector HL<bitmap
+;SETATTR EQU	30	; Set File Attributes DE=FCBaddr A<handle
+;GETPARM EQU	31	; Get Addr (DISKPARMS) A<DPBaddr
+;GETUSER EQU	32	; Set/Get User Code E=code (FFget) A<value
+;RDRANDOM EQU	33	; Read Random DE=FCBaddr A<status
+;WTRANDOM EQU	34	; Write Random DE=FCBaddr A<status
+;FILESIZE EQU	35	; Compute File Size DE=FCBaddr
+;SETRAN	 EQU	36	; Set Random Record DE=FCBaddr
+;LOGOFF	 EQU	37	; Reset Drive DE=drivevector
+;WTSPECL EQU	40	; Write Random with Zero Fill DE=FCBaddr A<status
+
 
 ;
 ; ASCII key codes
 ;
 LF	EQU	0Ah	; ^H LF
 CR 	EQU 	0Dh	; ^M CR/ENTER
+CTRLX	EQU	'X'-40h	; ^X
 ESC	EQU	1Bh	;    ESCAPE
-
 
 ;
 ; Start of code
 ;
 	ORG 0100h
+	jp	Start
 
-	ld	HL,MSG_CLEAR
-	call	OUTSTR
-	call	InverseText
-	ld	HL,MSG_HEADER
-	call	OUTSTR
-	call	NormalText
+#include "UTILS.Z80"
 
-loop:
+Start:
+	call	ClearMemory
+
+	ld  	DE,DFCB		; File Description Block
+	ld 	C,OPENFIL
+	call	BDOS		; error if A is 255
+	inc 	A
+	jp	Z,FileNotFound
+
+;
+; IX 	Src pointer into the disk read buffer
+; IY 	Dst pointer into the text buf in memory
+; cnt 	Keeps track of the bytes in each sector
+;
+
+	ld	IY,textBuf	; IY points to textBuf
+	ld	A,0FFh		; Set row to -1 so the SaveRowAddress
+	ld	(row),A		; can start by a increment row and have
+	ld	(row+1),A	; the first row end up indicating index 0
+
+	call	SaveRowAddress
+
+	push	IY		; Not sure if the disk read destroys IY
+	ld 	A,0		; Start reading from block 0
+	ld	(DFCBcr),A
+	ld  	DE,DFCB		; File Description Block
+	ld 	C,READSEQ
+	call	BDOS		; error if A is 255
+	pop	IY
+
+	ld	IX,dbuf
+	ld	A,128
+	ld 	(cnt),A
+foo:	ld	A,(IX+0)	; Get next char from disk buf
+	cp	A,CR
+	jp	Z,doNextChar
+	cp	A,LF
+	jp	Z,theEol
+apa:
+	ld	(IY+0),A
+	inc	IY
+	jp	doNextChar
+theEol:
+	ld	A,0		; Store 0 at the end of line
+	ld	(IY+0),A
+	inc	IY		; bump up pointer
+	call	SaveRowAddress	; and save it into the line pointers array
+	jp	doNextChar
+
+doNextChar:
+	inc	IX		; Point to next char in disk buf
+	ld	A,(cnt)
+	dec 	A
+	ld	(cnt),A
+	jp	NZ,foo
+	jp	Edit
+
+SaveRowAddress:
+	ld	HL,(row)	; row=row+1
+	inc	HL
+	ld	(row),HL
+	add	HL,HL		; multiply row*2 and add the address to the
+	ld	BC,txtPtrs	; txtPtrs
+	add	HL,BC		; HL now points to the slot in txtPtrs
+	push	IY		; IY holds the address to the line buffer
+	pop	BC		; Copy IY-> to BC so we can store the address
+	ld	(HL),B		; Store high part of address
+	inc	HL
+	ld	(HL),C		; Store low part of address
+	ret
+
+Edit:
+	call	RefreshFullScreen
+
+MainLoop:
 	call	ShowRowCol
 	call	GetChar
 	cp 	A,ESC
 	jp 	Z,HandleESC
-	jp 	loop
+	cp	A,CTRLX
+	jp	Z,Exit
+	jp 	MainLoop
 
 HandleESC:
 	; ld	HL,row
@@ -55,7 +167,7 @@ HandleESC:
 
 	cp 	A,'['		; an arrow key?
 	jp	Z,HandleArrowKeys
-	jp 	loop		; Go back to loop if unrecognized
+	jp 	MainLoop		; Go back to loop if unrecognized
 
 HandleArrowKeys:
 	call	GetChar		; Now get the "action" character for Arrows
@@ -67,7 +179,7 @@ HandleArrowKeys:
 	jp	Z,KeyRight
 	cp 	A,'D'		; ARROW LEFT ?
 	jp	Z,KeyLeft
-	jp	loop
+	jp	MainLoop
 
 HandleFkeys:
 	call	GetChar		; Now get the "action" character for Fx
@@ -79,181 +191,90 @@ HandleFkeys:
 	jp	Z,KeyF3
 	cp 	A,'S'		; F4 ?
 	jp	Z,KeyF4
-	jp 	loop
+	jp 	MainLoop
 
-KeyF1   jp	loop
+KeyF1   jp	MainLoop
 
-KeyF2   jp	loop
+KeyF2   jp	MainLoop
 
-KeyF3   jp	loop
+KeyF3   jp	MainLoop
 
-KeyF4   jp	loop
+KeyF4   jp	MainLoop
 
 KeyUp
 	ld	A,(row)
 	cp	A,0
-	jp	Z,loop
+	jp	Z,MainLoop
 	dec	A
 	ld 	(row),A
-	jp	loop
+	jp	MainLoop
 
 KeyDown
 	ld	A,(row)
 	cp	A,22
-	jp	Z,loop
+	jp	Z,MainLoop
 	inc	A
 	ld 	(row),A
-	jp	loop
+	jp	MainLoop
 
 KeyRight
 	ld	A,(col)
 	cp	A,79
-	jp	Z,loop
+	jp	Z,MainLoop
 	inc	A
 	ld 	(col),A
-	jp	loop
+	jp	MainLoop
 
 KeyLeft
 	ld	A,(col)
 	cp	A,0
-	jp	Z,loop
+	jp	Z,MainLoop
 	dec	A
 	ld 	(col),A
-	jp	loop
-
-	jp	WBOOT
-
-
+	jp	MainLoop
 
 ;
-; Waits for a character to become available and
-; returns it in A without echo.
 ;
-GetChar:
-	ld	C,C_RAWIO
-	ld 	E,0FFh		; FF=Read, FE=Status
-	call	BDOS
-	cp 	A,00h		; No char available?
-	jp 	Z,GetChar	; Loop until got a char
-	ret
-
-
 ;
-; Print message at HL until 0
-;
-OUTSTR:
-	ld	A,(HL)
-	or	A		; Check if got zero?
-	ret	Z		; If zero return to caller
-	push	HL		; else print the character
-	ld	E,A
-	ld	C,C_WRITE
-	call	BDOS
-	pop	HL
-	inc	HL
-	jp	OUTSTR
-
-
-
-;
-;	B=LINE C=COLUMN
-;
-GotoXY:
-	push	BC
-	ld	E,ESC
-	ld	C,C_WRITE
-	call	BDOS
-
-	ld	E,'['
-	ld	C,C_WRITE
-	call	BDOS
-
-	pop	BC
-	push	BC
-	ld	L,B
-	inc 	L
-	call	PrintDec2
-
-	ld	E,';'
-	ld	C,C_WRITE
-	call	BDOS
-
-	pop	BC
-	ld	L,C
-	inc	L
-	call	PrintDec2
-
-	ld	E,'H'
-	ld	C,C_WRITE
-	call	BDOS
+RefreshFullScreen:
+	ld	HL,MSG_CLEAR
+	call	PrintString0
+	call	InverseText
+	ld	HL,MSG_HEADER
+	call	PrintString0
+	call	NormalText
+	call	RefreshEditScreen
 	ret
 
 ;
-; Updates the Row and Column info at the top header line
 ;
-ShowRowCol:
-	call	InverseText	; The header line is inverse
-	ld	BC, XY_ROW	; Coordinates for the Row-field
+;
+RefreshEditScreen:
+	; Start printing the lines at the second row (1)
+	ld	BC,0100h	;B=row, C=col
+	ld	IX,txtPtrs
+RefreshLoop:
+	push	BC
 	call	GotoXY
-	ld 	HL, (row)	; Get the row and incremet by one since
-	inc	HL		; 1,1 is the first character on the screen
-	call 	PrintDec4
-	ld	BC, XY_COL	; Coordinates for the Column field
-	call	GotoXY
-	ld 	A, (col)
+	ld	A,(IX+0)
+	ld	H,A
+	ld	A,(IX+1)
 	ld	L,A
-	inc 	L
-	call 	PrintDec2
-	call	NormalText	; Go back to normal text again
+	inc	IX
+	inc	IX
+	call	PrintString0
+	ld	A,B
+	cp	A,80
+	call	NZ,ClearEOL
+
+	pop	BC
+	inc	B		; goto next row
+	ld	A,B
+	cp	A,24		; at last row?
+	jp	NZ,RefreshLoop	; Nope, do some more printing
+
 	ret
 
-;
-; Output the code sequence for displaying inverse text
-;
-InverseText:
-	ld	HL,MSG_INVERSETEXT
-	jp	OUTSTR
-
-;
-; Output the code sequence for displaying normal text
-;
-NormalText:
-	ld	HL,MSG_NORMALTEXT
-	jp	OUTSTR
-
-
-;
-; PrintDec2 / PrintDec4
-;
-; Print number in HL as a 2 or 4 digit decimal ASCII string with
-; leading zeros
-;
-; Input:	HL = number to print
-; Destroys: 	AF, BC, HL, DE
-;
-PrintDec4:
-	ld	BC,-1000
-	call	PrintDecA
-	ld	BC,-100
-	call	PrintDecA
-PrintDec2:
-	ld	H,0		; Make sure only L is considered...
-	ld	BC,-10		; ... from this point forward
-	call	PrintDecA
-	ld	BC,-1
-PrintDecA:
-	ld	A,'0'-1
-PrintDecB:
-	inc	A
-	add	HL,BC
-	jr	C,PrintDecB
-	sbc	HL,BC
-	push	HL
-	ld	E,A
-	ld	C,C_WRITE
-	call	BDOS
-	pop	HL
-	ret
 
 ;
 ; Static text/message strings
@@ -268,6 +289,12 @@ MSG_INVERSETEXT
 MSG_NORMALTEXT
 	DB	ESC,'[0m',0
 
+MSG_CLREOL
+	DB	ESC,'[K',0
+
+MSG_FILENOTFOUND
+	DB	CR,LF,"File not found",CR,LF,0
+
 MSG_HEADER
 	;        01234567890123456789012345678901234567890123456789012345678901234567890123456789
 	DB	' FILENAME.EXT * Row ---- Col --                                                 ',0
@@ -279,8 +306,16 @@ XY_COL	EQU	00*256 + 29
 ;
 ; Variables
 ;
+MAXROWS	EQU	1024
 
-row 	DW	17	; Current row/line in the editor
-col 	DB	35	; Current column in the editor
+VARIABLES EQU $		; Label used by ClearMemory function
+
+cnt	DS	1	; Generic counter
+toprow	DS	2	; The first line to be displayed on screen
+row 	DS	2	; Current row/line in the editor
+col 	DS	1	; Current column in the editor
+txtPtrs	DS	MAXROWS*2 ; Pointers to the beginning of each line
+currBuf	DS	81	; Copy of the line being edited
+textBuf	EQU	$	; Start of the loaded file being edited
 
 	END
