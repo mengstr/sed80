@@ -71,6 +71,20 @@ PrintString0A:
 	inc	HL
 	jp	PrintString0A
 
+;
+; Prints the 'B' bytes long string pointed to by IX, but no spaces
+;
+PrintNoSpaceBfromIX
+	push	BC
+	ld	A,(IX)		; Get character pointed to by IX
+	ld	E,A
+	ld	C,DIRCIO
+	cp	A,' '		; Don't print spaces
+	call	NZ,BDOS
+	pop	BC
+	inc	IX		; Advance to next character
+	djnz	PrintNoSpaceBfromIX ; Loop until B=0
+	ret
 
 
 ;

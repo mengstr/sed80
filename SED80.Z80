@@ -168,12 +168,25 @@ KeyLeft
 ;
 ;
 RefreshFullScreen:
-	ld	HL,MSG_CLEAR
+	ld	HL,MSG_CLEAR	; Clear screen and Home cursor
 	call	PrintString0
-	call	InverseText
-	ld	HL,MSG_HEADER
+	call	InverseText	; The header line is printed in inverse
+
+	ld	HL,MSG_HEADER	; Print the 80 chars wide template
 	call	PrintString0
-	call	NormalText
+
+	ld	BC,XY_NAME	; Position at the filename field in header
+	call	GotoXY
+	ld	IX,DFCB+1	; Start of filename in File Control Block
+	ld	B,8		; First part is 8 characters
+	call	PrintNoSpaceBfromIX
+	ld	E,'.'		; Print the dot between filname & extension
+	ld	C,DIRCIO
+	call	BDOS
+	ld 	B,3		; Then print the extension
+	call	PrintNoSpaceBfromIX
+
+	call	NormalText	; Go back to normal text again
 	call	RefreshEditScreen
 	ret
 
@@ -228,10 +241,12 @@ MSG_FILENOTFOUND
 
 MSG_HEADER
 	;        01234567890123456789012345678901234567890123456789012345678901234567890123456789
-	DB	' FILENAME.EXT * Row ---- Col --                                                 ',0
+	;         FILENAME.EXT * Row 0001/0458 Col 22
+	DB	'              * Row ----/---- Col --                                            ',0
 
+XY_NAME EQU	00*256 + 1
 XY_ROW 	EQU	00*256 + 20
-XY_COL	EQU	00*256 + 29
+XY_COL	EQU	00*256 + 34
 
 
 ;
