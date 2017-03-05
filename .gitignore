@@ -12,6 +12,9 @@
 *.elf
 *.lst
 *.pre
+*.hex
+*.bin
+*.rom
 
 # Some private folders
 private/
