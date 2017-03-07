@@ -14,6 +14,8 @@ GetChar:
 ;
 ;
 Exit:
+	ld	HL,MSG_RESTORESCROLL
+	call	PrintString0
 	ld	BC,23*256+0
 	call	GotoXY
 	call	ClearEOL
@@ -125,17 +127,26 @@ GotoXY:
 ;
 ShowRowCol:
 	call	InverseText	; The header line is inverse
+
 	ld	BC, XY_ROW	; Coordinates for the Row-field
 	call	GotoXY
-	ld 	HL, (row)	; Get the row and incremet by one since
+	ld 	HL, (row)	; Get the value and incremet by one since
 	inc	HL		; 1,1 is the first character on the screen
 	call 	PrintDec4
+
+	ld	BC, XY_MAXROW	; Coordinates for the MaxRows-field
+	call	GotoXY
+	ld 	HL, (toprow)	; Get the value and incremet by one since
+	inc	HL		; 1,1 is the first character on the screen
+	call 	PrintDec4
+
 	ld	BC, XY_COL	; Coordinates for the Column field
 	call	GotoXY
 	ld 	A, (col)
 	ld	L,A
 	inc 	L
 	call 	PrintDec2
+
 	call	NormalText	; Go back to normal text again
 	ret
 
@@ -160,6 +171,20 @@ ClearEOL:
 	ld	HL,MSG_CLREOL
 	jp 	PrintString0
 
+
+
+;
+;
+;
+ScrollAtTop:
+	ld	HL,MSG_INSERT_TOP
+	jp	PrintString0
+;
+;
+;
+ScrollAtBottom:
+	ld	HL,MSG_INSERT_BOTTOM
+	jp	PrintString0
 
 ;
 ; PrintDec2 / PrintDec4
