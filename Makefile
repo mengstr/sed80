@@ -11,7 +11,11 @@ FLAGSBIN	= --z80 -v2 -u -w -b
 
 TARGET		= SED80
 
+INTERACTIVE:=$(shell [ -t 0 ] && echo 1)
+
 all: $(TARGET).hex 
+
+full: clean flash
 
 $(TARGET).hex: $(TARGET).Z80
 	@echo [ZASM] $<
@@ -41,10 +45,15 @@ flash: $(TARGET).hex
 	@echo -n PIP...
 	@echo "A:PIP I:$(TARGET).HEX=CON:" > /dev/ttyUSB0
 	@sleep 0.25
+ifdef INTERACTIVE
 	@echo -n UPLOAD ---%
 	@$(eval LINES=$(shell cat $(TARGET).hex | wc -l))
 	@cnt=0;cat $(TARGET).hex | while read line;do cnt=$$(( cnt+100)); printf "\b\b\b\b%3d%%" $$(( $$cnt/$(LINES) )); echo $$line>/dev/ttyUSB0;sleep 0.01; done
 	@echo -n " "
+else
+	@echo -n UPLOAD...
+	@cat $(TARGET).hex | while read line;do echo $$line>/dev/ttyUSB0;sleep 0.01; done
+endif
 	@echo -e "\x1A" > /dev/ttyUSB0
 	@echo HEX2COM...
 	@sleep 2
@@ -75,6 +84,7 @@ upload:
 	@$(SERIAL) -load cpm8266 -sercfg $(EMULATIONBAUD)
 
 clean:
+	@echo "[clean]"
 	@rm -rf *~
 	@rm -rf *.{rom,bin,hex,lst}
 
