@@ -1,5 +1,5 @@
 SHELL		=  /bin/bash
-EMULATIONBAUD	=  115200
+EMULATIONBAUD	=  9600
 ESPPORT		?= /dev/ttyUSB0
 
 ESPTOOL		=  /opt/esptool/esptool.py
@@ -50,6 +50,7 @@ flash: $(TARGET).hex
 	@sleep 2
 	@echo "A:LOAD $(TARGET)" > /dev/ttyUSB0
 	@echo -n "SED80 TESTFILE.TXT" > /dev/ttyUSB0
+#	@echo -n "A:DDTZ SED80.COM " > /dev/ttyUSB0
 	@$(SERIAL) -load cpm8266 -sercfg $(EMULATIONBAUD)
 
 

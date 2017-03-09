@@ -177,14 +177,40 @@ ClearEOL:
 ;
 ;
 ScrollAtTop:
-	ld	HL,MSG_INSERT_TOP
+	ld	HL,MSG_SHIFT_DOWN
 	jp	PrintString0
+
 ;
 ;
 ;
 ScrollAtBottom:
-	ld	HL,MSG_INSERT_BOTTOM
+	ld	HL,MSG_SHIFT_UP
 	jp	PrintString0
+
+
+;
+; Return the current line active on the screen in HL
+; Destroys BC
+;
+GetScreenLineToHL:
+	ld	HL,(row)	; screenline=row-toprow
+	ld	BC,(toprow)
+	or	A
+	sbc	HL,BC
+	inc	HL		; Adjust for first line being 1
+	ret
+
+;
+; Position cursor on screen according to the row/col and
+; taking toprow into consideration
+;
+SetCursor:
+	call	GetScreenLineToHL
+	ld	B,L		; B is line
+	ld	A,(col)		; C is column
+	ld	C,A
+	call	GotoXY
+	ret
 
 ;
 ; PrintDec2 / PrintDec4
@@ -218,3 +244,49 @@ PrintDecB:
 	call	BDOS
 	pop	HL
 	ret
+
+
+
+;
+; 16-bit Integer to ASCII (decimal)
+;
+;Input: HL = number to convert, DE = location of ASCII string
+;Output: ASCII string at (DE)
+;
+NumAscii5
+	ld	BC,-10000
+	call	NA1
+NumAscii4
+	ld	BC,-1000
+	call	NA1
+NumAscii3
+	ld	BC,-100
+	call	NA1
+NumAscii2
+	ld	BC,-10
+	call	NA1
+NumAscii1
+	ld	BC,-1
+
+NA1	ld	A,'0'-1
+NA2	inc	A
+	add	HL,BC
+	jr	C,NA2
+	sbc	HL,BC
+
+	ld	(DE),A
+	inc	DE
+	ret
+
+
+
+;StrCopy:
+;;Copy zero terminated string at HL to DE.
+;;Destroys AF, DE, HL
+;	xor	a		;4
+;docopystr:
+;	cp	(hl)		;7
+;	ldi			;16
+;	jr	nz,docopystr	;12
+;	ret			;5
+

@@ -60,12 +60,15 @@ PUTDMA	 EQU	26	; Set DMA Address DE=addr
 ;
 ; ASCII key codes
 ;
-LF	EQU	0Ah	; ^H LF
-CR 	EQU 	0Dh	; ^M CR/ENTER
+CTRLB	EQU	'B'-40h	; ^B		- Key for testing
+LF	EQU	'J'-40h	; ^J LF
+CR 	EQU 	'M'-40h	; ^M CR/ENTER
 CTRLQ	EQU	'Q'-40h	; ^Q		- Exit & Without save
 CTRLR	EQU	'R'-40h	; ^R		- Refresh screen
+CTRLW	EQU	'W'-40h	; ^W		- Delete next word to the right
 CTRLX	EQU	'X'-40h	; ^X		- Exit & Save
-ESC	EQU	1Bh	;    ESCAPE
+CTRLY	EQU	'Y'-40h	; ^Y		- Delete line
+ESC	EQU	'['-40h	; ESCAPE
 
 ;
 ; Start of code
@@ -78,48 +81,125 @@ ESC	EQU	1Bh	;    ESCAPE
 
 Start:
 	call	LoadFile
-	ld	HL,5
+	ld	HL,0
 	ld	(toprow),HL
-	ld	HL,15
+	ld	HL,0
 	ld	(row),HL
 	call	RefreshFullScreen
-;	call	RefreshEditScreen
+	call	RefreshTopLine
 
 MainLoop:
 	call	ShowRowCol
 	call	SetCursor
 	call	GetChar
-	cp 	A,ESC
-	jp 	Z,HandleESC
-	cp	A,CTRLQ
-	jp	Z,Exit
+
+	cp 	A,ESC		; Arrows and F-keys?
+	jr 	NZ,$+8
+	call	HandleESC
+	jp	MainLoop
+
+	cp	A,CTRLQ		; ctrl-Q Quit without saving?
+	jr	NZ,$+8
+	call	Exit
+	jp	MainLoop
+
+	cp	A,CTRLX		; ctrl-X Save and exit
+	jr	NZ,$+8
+	call	HandleSaveExit
+	jp	MainLoop
+
 	cp	A,CTRLR
-	jp	Z,HandleRefresh
-	cp	A,CTRLX
-	jp	Z,HandleSaveExit
+	jr	NZ,$+8
+	call	RefreshFullScreen
+	jp	MainLoop
+
+	cp	A,CTRLB
+	jr	NZ,$+8
+	call	InsertNewLineAtCursor
 	jp 	MainLoop
 
+	cp	A,CTRLY
+	jr	NZ,$+8
+	call	DeleteLineAtCursor
+	jp 	MainLoop
+
+	jp	MainLoop
+
+
+CopyCurrentLineToEditBuf1:
+	call 	CopyCurrentLineToEditBuf
+	jp	MainLoop
+
+;
+; Fill editBuf with <space> terminated by <nul>
+; Copy the text from current row into editBuf
+;
+CopyCurrentLineToEditBuf:
+	ld	BC,80		;Fill 80 characers with space
+	ld	HL,editBuf	; HL=start address of block
+	ld 	E,L		; DE=HL+1
+	ld 	D,H
+	inc 	DE
+	ld 	(HL),20h	; initialise first byte of block with data
+	ldir   			; Now blast-fill the memory!
+	ld	(HL),0		; Terminate editBuf with a 0 at the end
+
+	; Get the source HL adddress from <row>
+	call	SetHLtoAddressOfRow
+
+	; Set destination DE to the start of the edit buffer
+	ld	DE,editBuf	; HL=start address of block
+
+	; Copy characters until <nul>
+CCLL:
+	ld	A,(HL)
+	cp	A,0
+	ret	Z
+	ld	(DE),A
+	inc	DE
+	inc	HL
+	jp	CCLL
+
+
+
+;
+; Returns with HL pointing to the first character of <row>
+; Destroys BC
+;
+SetHLtoAddressOfRow:
+	ld	BC,(row)	;
+SetHLtoAddressOfRowBC:
+	ld	HL,txtPtrs	; HL=&txtPtrs
+	add	HL,BC		; HL=HL+BC*2 (skip to the pointer for "row")
+	add	HL,BC
+	ld	B,(HL)		; BC=*HL
+	inc	HL
+	ld	C,(HL)
+	ld	HL,BC		; HL=BC
+	ret
+
+;
+; Returns with HL pointing to the first character of <toprow>
+; I.E the first line on screen
+; Destroys BC
+;
+SetHLtoAddressOfTopRow:
+	ld	BC,(toprow)	;
+	jp	SetHLtoAddressOfRowBC
 
 HandleSaveExit:
 ;	call	Save
 	jp	Exit
 
-HandleRefresh:
-	call	RefreshFullScreen
-	jp	MainLoop
-
 
 HandleESC:
-	; ld	HL,row
-	; inc	(HL)
-
 	call	GetChar		; Check if next character is an O indicating
 	cp 	A,'O'		; a function key?
 	jp	Z,HandleFkeys
 
 	cp 	A,'['		; an arrow key?
 	jp	Z,HandleArrowKeys
-	jp 	MainLoop		; Go back to loop if unrecognized
+	ret			; Go back to loop if unrecognized
 
 HandleArrowKeys:
 	call	GetChar		; Now get the "action" character for Arrows
@@ -131,7 +211,7 @@ HandleArrowKeys:
 	jp	Z,KeyRight
 	cp 	A,'D'		; ARROW LEFT ?
 	jp	Z,KeyLeft
-	jp	MainLoop
+	ret			; Go back to mainloop if unrecongized
 
 HandleFkeys:
 	call	GetChar		; Now get the "action" character for Fx
@@ -143,15 +223,12 @@ HandleFkeys:
 	jp	Z,KeyF3
 	cp 	A,'S'		; F4 ?
 	jp	Z,KeyF4
-	jp 	MainLoop
+	ret			; Go back to mainloop if unrecongized
 
-KeyF1   jp	MainLoop
-
-KeyF2   jp	MainLoop
-
-KeyF3   jp	MainLoop
-
-KeyF4   jp	MainLoop
+KeyF1   ret			; Back to mainloop
+KeyF2   ret			; Back to mainloop
+KeyF3   ret			; Back to mainloop
+KeyF4   ret			; Back to mainloop
 
 
 ;
@@ -161,7 +238,6 @@ KeyF4   jp	MainLoop
 ;
 ; row>toprow	(row-1)-toprow is not carry
 ;
-
 KeyUp
 	ld	A,(row)
 	cp	A,0
@@ -169,8 +245,7 @@ KeyUp
 	ld	A,(row+1)
 	cp	A,0
 	jp	NZ,KUnot0
-	jp	MainLoop
-
+	ret			; Back to mainloop
 KUnot0
 	ld	HL,(row)	; (row
 	dec	HL		;  -1)
@@ -182,7 +257,7 @@ KUnot0
 	ld	HL,(row)	; row--
 	dec	HL
 	ld	(row),HL
-	jp 	MainLoop	; return
+	ret			; Back to mainloop
 
 KU1
 	ld	HL,(row)	; row--
@@ -191,7 +266,7 @@ KU1
 	ld	(toprow),HL	; toprow=row
 	call	ScrollAtTop
 	call	RefreshTopLine
-	jp 	MainLoop	; return
+	ret			; Back to mainloop
 
 ;
 ; if (row+23<toprow) row++; return;
@@ -212,7 +287,7 @@ KeyDown
 	ld	HL,(row)	; row=row+1
 	inc 	HL
 	ld	(row),HL
-	jp	MainLoop
+	ret			; Back to mainloop
 
 KD1
 	; Reached bottom of screen, so we must scroll
@@ -225,23 +300,23 @@ KD1
 	ld	(toprow),HL
 	call	ScrollAtBottom
 	call	RefreshBottomLine
-	jp	MainLoop
+	ret			; Back to mainloop
 
 KeyRight
 	ld	A,(col)
 	cp	A,79
-	jp	Z,MainLoop
+	ret	Z		; Back to mainloop
 	inc	A
 	ld 	(col),A
-	jp	MainLoop
+	ret			; Back to mainloop
 
 KeyLeft
 	ld	A,(col)
 	cp	A,0
-	jp	Z,MainLoop
+	ret	Z		; Back to mainloop
 	dec	A
 	ld 	(col),A
-	jp	MainLoop
+	ret			; Back to mainloop
 
 ;
 ;
@@ -274,43 +349,32 @@ RefreshFullScreen:
 ;
 ;
 RefreshTopLine:
-	ld	IX,txtPtrs	; IX keeps track of the row index pointer
-	ld	BC,(toprow)	; Jump to offset toprow*2 to adjust for
-	add	IX,BC		; how long we scrolled down into the file
-	add	IX,BC
-	; Start printing the lines at the second row (1)
+	call	SetHLtoAddressOfTopRow
 	ld	BC,0100h	;B=row, C=col
-	call	RefreshSingleLine
-	ret
+	jp	RefreshSingleLine
 
 ;
 ;
 ;
 RefreshBottomLine:
-	ld	IX,txtPtrs	; IX keeps track of the row index pointer
-	ld	BC,(toprow)	; Jump to offset toprow*2 to adjust for
-	add	IX,BC		; how long we scrolled down into the file
-	add	IX,BC
-	ld	BC,44		; Offset down to the last line on screent
-	add	IX,BC
-	; Start printing the lines at the second row (1)
+	ld	HL,(toprow)	; Jump to offset toprow*2 to adjust for
+	ld	BC,22		; Offset down to the last line on screent
+	add	HL,BC
+	ld	BC,HL
+	call	SetHLtoAddressOfRowBC
 	ld	BC,1800h	;B=row, C=col
-	call	RefreshSingleLine
-	ret
-
+	jp	RefreshSingleLine
 
 ;
 ; Update a single line on screen
 ; B = Line number
 ; C = 0
-; IX = Point to the right txtPtrs
+; HL = Start of text for the line
 ;
 RefreshSingleLine:
+	push	HL
 	call	GotoXY
-	ld	A,(IX+0)
-	ld	H,A
-	ld	A,(IX+1)
-	ld	L,A
+	pop	HL
 	call	PrintString0
 	ld	A,B
 	cp	A,80
@@ -321,59 +385,116 @@ RefreshSingleLine:
 ;
 ;
 RefreshEditScreen:
-	ld	IX,txtPtrs	; IX keeps track of the row index pointer
-	ld	BC,(toprow)	; Jump to offset toprow*2 to adjust for
-	add	IX,BC		; how long we scrolled down into the file
-	add	IX,BC
+	ld	HL,(toprow)	; toprow will be modified in this
+	push	HL		; function so we need to save it
 
-	; Start printing the lines at the second row (1)
 	ld	BC,0100h	;B=row, C=col
 
 RELoop:
 	push	BC
+	call 	SetHLtoAddressOfTopRow
+	pop	BC
+	push	BC
 	call	RefreshSingleLine
 	pop	BC
-	inc	IX		; Goto next pointer in array (2 bytes each)
-	inc	IX
+	ld	HL,(toprow)	; Point to next row
+	inc	HL
+	ld	(toprow),HL
 	inc	B		; Goto next row on screen
 	ld	A,B
 	cp	A,24		; at last row?
 	jp	NZ,RELoop	; Nope, do some more printing
+
+	pop	HL		; Restore the saved toprow variable
+	ld	(toprow),HL
 
 	call	SetCursor
 
 	ret
 
 
+
+
 ;
-; Position cursor on screen according to the row/col and
-; taking toprow into consideration
 ;
-SetCursor:
-	; Position cursor at the right place on the screen
-	ld	HL,(row)	; screenline=row-toprow
-	ld	BC,(toprow)
-	or	A
-	sbc	HL,BC
-	ld	B,L		; B is line
-	inc	B		; Offset for first line being 1
-	ld	A,(col)		; C is column
-	ld	C,A
-	call	GotoXY
+;
+InsertNewLineAtCursor
+	call	GetScreenLineToHL
+	inc	HL		; Adjust for header line
+
+	push	HL		; Patch in the line into two places in
+	ld	DE,MSG_NEWLINE_AT+2 ;the escape sequences.
+	call	NumAscii2
+	pop	HL
+	ld	DE,MSG_NEWLINE_AT+10
+	call	NumAscii2
+
+	ld	HL,MSG_NEWLINE_AT ;And send it to the terminal
+	call	PrintString0
+
+
+; LDIR
+;	(DE) = (HL)
+;	DE = DE + 1
+;	HL = HL + 1
+;	BC = BC - 1 repeat until BC = 0
+;
+; LDDR
+;	(DE) = (HL)
+;	DE = DE - 1
+;	HL = HL - 1
+;	BC = BC - 1 repeat until BC = 0
+;
+
+;
+; OLD 012345678901234567890  len=10
+; NEW 0123__456789012345678  pos=2
+;
+; Source = HL = len-1
+; Dest   = DE = HL-1
+; Count  = BC = len-pos-1
+;
+
+	ld	BC,(row)	;
+	ld	HL,txtPtrs	; HL=&txtPtrs
+	add	HL,BC		; HL=HL+BC*2 (skip to the pointer for "row")
+	add	HL,BC
+
 	ret
 
 
 
 ;
+;
+;
+DeleteLineAtCursor
+	call	GetScreenLineToHL
+	inc	HL		; Adjust for header line
+
+	ld	DE,MSG_DELLINE_AT+2 ; Patch in the line number into
+	call	NumAscii2	; the string
+
+	ld	HL,MSG_DELLINE_AT ;And send it to the terminal
+	call	PrintString0
+
+	call	RefreshBottomLine
+	ret
+
+;
 ; Static text/message strings
 ;
 
-MSG_INSERT_TOP
+MSG_SHIFT_DOWN
 	DB	ESC,'[2;24r',ESC,'[2;1H',ESC,'M',0
 
-MSG_INSERT_BOTTOM
+MSG_SHIFT_UP
 	DB	ESC,'[2;24r',ESC,'[24;1H',ESC,'D',0
 
+MSG_NEWLINE_AT
+	DB	ESC,'[__;24r',ESC,'[__;1H',ESC,'M',0
+
+MSG_DELLINE_AT
+	DB	ESC,'[__;24r',ESC,'[24;1H',ESC,'D',0
 
 MSG_RESTORESCROLL
 	DB 	ESC,'[r',0
@@ -409,6 +530,10 @@ XY_COL	EQU	00*256 + 34
 ;
 MAXROWS	EQU	1024
 
+guard1	DB	'@'
+editBuf	DS	81	; Copy of the line being edited
+guard2	DB	'@'
+
 VARIABLES EQU $		; Label used by ClearMemory function
 
 cnt	DS	1	; Generic counter
@@ -416,7 +541,6 @@ toprow	DS	2	; The first line to be displayed on screen
 row 	DS	2	; Current row/line in the editor
 col 	DS	1	; Current column in the editor
 txtPtrs	DS	MAXROWS*2 ; Pointers to the beginning of each line
-currBuf	DS	81	; Copy of the line being edited
 textBuf	EQU	$	; Start of the loaded file being edited
 
 	END
