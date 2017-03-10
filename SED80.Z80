@@ -69,6 +69,7 @@ CTRLW	EQU	'W'-40h	; ^W		- Delete next word to the right
 CTRLX	EQU	'X'-40h	; ^X		- Exit & Save
 CTRLY	EQU	'Y'-40h	; ^Y		- Delete line
 ESC	EQU	'['-40h	; ESCAPE
+EOF	EQU	'Z'-40h
 
 ;
 ; Start of code
@@ -188,7 +189,7 @@ SetHLtoAddressOfTopRow:
 	jp	SetHLtoAddressOfRowBC
 
 HandleSaveExit:
-;	call	Save
+	call	SaveFile
 	jp	Exit
 
 

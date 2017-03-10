@@ -72,9 +72,15 @@ doNextChar:
 	jp	GetNextSector	; This sector is finished, get a new sector
 
 AtEOF:
+	ld  	DE,DFCB		; File Description Block
+	ld 	C,CLOSEFIL
+	call	BDOS
 	ret
 
 
+;
+;
+;
 SaveRowAddress:
 	ld	HL,(row)	; row=row+1
 	inc	HL
@@ -84,7 +90,197 @@ SaveRowAddress:
 	add	HL,BC		; HL now points to the slot in txtPtrs
 	push	IY		; IY holds the address to the line buffer
 	pop	BC		; Copy IY-> to BC so we can store the address
+	ld	(HL),BC
 	ld	(HL),B		; Store high part of address
 	inc	HL
 	ld	(HL),C		; Store low part of address
 	ret
+
+
+;
+; Save <original_extension>
+; Delete FILENAME.BAK
+; Restore <original_extension>
+; Rename FILENAME.<original_extension> to FILENAME.BAK
+; Create new FILENAME.<original_extension>
+; Write data to it
+; Close file
+;
+; 0 12345678 901 23456 78901234 567 89
+; d FFFFFFFF EEE     d FFFFFFFF EEE
+SaveFile:
+	; Save <original_extension>
+	ld	HL,(DFCB+9)
+	push	HL
+	ld	HL,(DFCB+11)
+	push 	HL
+
+	; Delete FILENAME.BAK
+	ld	A,'B'		; Change extension to BAK
+	ld	(DFCB+9),A
+	ld	A,'A'
+	ld	(DFCB+10),A
+	ld	A,'K'
+	ld	(DFCB+11),A
+
+	ld  	DE,DFCB		; Reuse base file name inserted by CCP
+	ld 	C,DELFILE	;
+	call	BDOS		; Returns A in 255 if error, but we don't care
+
+	; Restore <original_extension>
+	pop	HL
+	ld	(DFCB+11),HL
+	pop	HL
+	ld	(DFCB+9),HL
+
+	; Rename FILENAME.<original_extension> to FILENAME.BAK
+	;
+	; This is done by opening the source file, setting the new name
+	; to FCB+16, calling the RENFILE function and then closing
+	;
+	ld  	DE,DFCB		; Open the file
+	ld 	C,OPENFIL	;
+	call	BDOS		; Returns A in 255 if error
+	inc 	A
+	jp	Z,FailOpen
+
+	ld	A,0		; Drive is always default 0
+	ld	(DFCB+16),A
+	ld	HL,(DFCB+1)	; Copy first 8 chars of file name to FCB+16
+	ld	(DFCB+17),HL
+	ld	HL,(DFCB+3)
+	ld	(DFCB+19),HL
+	ld	HL,(DFCB+5)
+	ld	(DFCB+21),HL
+	ld	HL,(DFCB+7)
+	ld	(DFCB+23),HL
+	ld	A,'B'		; New file has extension to BAKe
+	ld	(DFCB+25),A
+	ld	A,'A'
+	ld	(DFCB+26),A
+	ld	A,'K'
+	ld	(DFCB+27),A
+
+	ld  	DE,DFCB		; Rename file now
+	ld 	C,RENFILE
+	call	BDOS		; Returns A in 255 if error
+	inc 	A
+	jp	Z,FailRename
+
+	ld  	DE,DFCB		; Close the renamed file
+	ld 	C,CLOSEFIL
+	call	BDOS
+	inc 	A
+	jp	Z,FailClose
+
+
+	; Create new FILENAME.<original_extension>
+	ld  	DE,DFCB		; Create new file
+	ld 	A,0		; Start at block 0
+	ld	(DFCBcr),A
+	ld 	C,FCREATE
+	call	BDOS		; Returns A in 255 if error opening
+	inc 	A
+	jp	Z,FailCreate
+
+	ld	DE,dbuf		; DE points to the next space in disk buffer
+
+	; Write data to it
+	ld	B,0		; BC keeps track of the current line being
+	ld	C,0		; output to disk
+
+WDLOOP1:
+	push	BC		; HL points to the source text
+	call	SetHLtoAddressOfRowBC
+	pop	BC
+	ld	A,H		; If HL==0 then we're at end of 'file'
+	or	A,L
+	jp	Z,WDFLUSHLAST
+
+WDLOOP2:
+	ld	A,(HL)		; Get char to save
+	cp	a,0		; If zero then at end of this line
+	jp	Z,WDEOL
+	call	WriteCharToDisk	; If not write charecter to disk
+	inc	HL		; Point to next character...
+	jp	WDLOOP2		; ... and loop back to fetch it
+
+WDEOL:
+	ld	A,CR		; At the end of each line insert CR...
+	call	WriteCharToDisk
+	ld	A,LF		;... and LF
+	call	WriteCharToDisk
+	inc	BC		; Start procesing next line
+	jp	WDLOOP1
+
+
+WriteCharToDisk:
+	ld	(DE),A		; Store the character to disk buf
+	inc	DE		; Point to next char in disk buf
+	ld	A,E		; Reached end of disk buf yet?
+	cp	A,0
+	ret	NZ		; No, just return
+
+	; Yes, flush the buf to disk, but save registers first
+	push	bc
+	push	hl
+
+	ld	DE,dbuf		; Reset DMA address to the disk buff
+	ld 	C,PUTDMA
+	call	BDOS
+
+	ld  	DE,DFCB		; File Description Block
+	ld 	C,WRTSEQ
+	call	BDOS		; Returns A=0 if ok
+	cp	A,0
+	jp	NZ,FailWrite
+
+	pop	hl		; Restore registers that the BDOS...
+	pop	bc		;... would have clobbered
+	ld	DE,dbuf		; Reset our dbuf pointer
+	ret
+
+	; Flush the last sector to disk
+WDFLUSHLAST:
+	ld	A,E		; Are we at beginning of buffer now?
+	cp	A,80h		; dbuf starts at 080h
+	jp	Z,WDEND		; Yes, we're done flushing
+	ld	A,EOF
+	call	WriteCharToDisk
+	jp	WDFLUSHLAST
+
+WDEND:
+	; Close file
+	ld  	DE,DFCB		; Close the newly created file
+	ld 	C,CLOSEFIL
+	call	BDOS
+
+	ret
+
+
+FailOpen:
+	ld	HL,MSG_FAILOPEN
+	call	PrintString0
+	jp 	Exit
+FailCreate:
+	ld	HL,MSG_FAILCREATE
+	call	PrintString0
+	jp 	Exit
+FailWrite:
+	ld	HL,MSG_FAILWRITE
+	call	PrintString0
+	jp 	Exit
+FailRename:
+	ld	HL,MSG_FAILRENAME
+	call	PrintString0
+	jp 	Exit
+FailClose:
+	ld	HL,MSG_FAILCLOSE
+	call	PrintString0
+	jp 	Exit
+
+MSG_FAILOPEN 	DB '\n\r\n\r\n\rFAILOPEN\r\n',0
+MSG_FAILCREATE 	DB '\n\r\n\r\n\rFAILCREATE\r\n',0
+MSG_FAILWRITE 	DB '\n\r\n\r\n\rFAILWRITE\r\n',0
+MSG_FAILRENAME 	DB '\n\r\n\r\n\rFAILRENAME\r\n',0
+MSG_FAILCLOSE 	DB '\n\r\n\r\n\rFAILCLOSE\r\n',0
