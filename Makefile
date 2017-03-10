@@ -10,6 +10,7 @@ FLAGSHEX	= --z80 -v2 -u -w -x
 FLAGSBIN	= --z80 -v2 -u -w -b
 
 TARGET		= SED80
+SRCS		= $(wildcard *.Z80)
 
 INTERACTIVE:=$(shell [ -t 0 ] && echo 1)
 
@@ -17,9 +18,9 @@ all: $(TARGET).hex
 
 full: clean flash
 
-$(TARGET).hex: $(TARGET).Z80
+$(TARGET).hex: $(SRCS)
 	@echo [ZASM] $<
-	@$(ZASM) $(FLAGSHEX) $< -o $@
+	@$(ZASM) $(FLAGSHEX) $(TARGET).Z80 -o $@
 	@srec_cat $@ -intel -offset 0x100 -o /tmp/zasm.tmp -intel
 	@tail -n +2 /tmp/zasm.tmp > $@
 
