@@ -13,6 +13,9 @@ GetChar:
 ;
 ;
 ;
+FileNotFound:
+	ld	HL,MSG_FILENOTFOUND
+	call	PrintString0
 Exit:
 	ld	HL,MSG_RESTORESCROLL
 	call	PrintString0
@@ -21,13 +24,6 @@ Exit:
 	call	ClearEOL
 	jp	RESET
 
-;
-;
-;
-FileNotFound:
-	ld	HL,MSG_FILENOTFOUND
-	call	PrintString0
-	jp	RESET
 
 
 ;
@@ -57,18 +53,12 @@ ClearMemory:
 ; Print message at HL until 0, returns number of printed characters in B
 ;
 PrintString0:
-	ld 	C,0
+	ld 	B,0
 PrintString0A:
 	ld	A,(HL)
 	or	A		; Check if got zero?
 	ret	Z		; If zero return to caller
-	push	HL		; else print the character
-	push	BC
-	ld	E,A
-	ld	C,DIRCIO
-	call	BDOS
-	pop	BC
-	pop	HL
+	call	PrintA		; else print the character
 	inc	B
 	inc	HL
 	jp	PrintString0A
@@ -90,36 +80,48 @@ PrintNoSpaceBfromIX
 
 
 ;
-;	B=LINE C=COLUMN
+; Output character in A to console
+;
+PrintA:
+	push	DE
+	push	BC
+	push	HL
+	ld	E,A
+	ld	C,DIRCIO
+	call	BDOS
+	pop	HL
+	pop	BC
+	pop	DE
+	ret
+
+;
+;	B=LINE 		FFh=Header, 00h..16h=Editor lines
+;	C=COLUMN	00h..4Fh
+;
+; Destroys A
 ;
 GotoXY:
-	push	BC
-	ld	E,ESC
-	ld	C,DIRCIO
-	call	BDOS
+	ld	A,ESC
+	call	PrintA
+	ld	A,'['
+	call	PrintA
 
-	ld	E,'['
-	ld	C,DIRCIO
-	call	BDOS
-
-	pop	BC
 	push	BC
 	ld	L,B
-	inc 	L
+	inc 	L		; Double offset is needed here because the
+	inc 	L		; Header row is at top
 	call	PrintDec2
 
-	ld	E,';'
-	ld	C,DIRCIO
-	call	BDOS
+	ld	A,';'
+	call	PrintA
 
 	pop	BC
 	ld	L,C
-	inc	L
+	inc	L		; The column only need a single offset
 	call	PrintDec2
 
-	ld	E,'H'
-	ld	C,DIRCIO
-	call	BDOS
+	ld	A,'H'
+	call	PrintA
 	ret
 
 ;
@@ -131,20 +133,20 @@ ShowRowCol:
 	ld	BC, XY_ROW	; Coordinates for the Row-field
 	call	GotoXY
 	ld 	HL, (row)	; Get the value and incremet by one since
-	inc	HL		; 1,1 is the first character on the screen
+	inc	HL		; we want 1,1 displayed instead of 0,0
 	call 	PrintDec4
 
 	ld	BC, XY_MAXROW	; Coordinates for the MaxRows-field
 	call	GotoXY
 	ld 	HL, (toprow)	; Get the value and incremet by one since
-	inc	HL		; 1,1 is the first character on the screen
+	inc	HL		; we want 1,1 displayed instead of 0,0
 	call 	PrintDec4
 
 	ld	BC, XY_COL	; Coordinates for the Column field
 	call	GotoXY
 	ld 	A, (col)
 	ld	L,A
-	inc 	L
+	inc 	L		; we want 1,1 displayed instead of 0,0
 	call 	PrintDec2
 
 	call	NormalText	; Go back to normal text again
@@ -171,8 +173,6 @@ ClearEOL:
 	ld	HL,MSG_CLREOL
 	jp 	PrintString0
 
-
-
 ;
 ;
 ;
@@ -197,7 +197,7 @@ GetScreenLineToHL:
 	ld	BC,(toprow)
 	or	A
 	sbc	HL,BC
-	inc	HL		; Adjust for first line being 1
+;	inc	HL		; Adjust for first line being 1
 	ret
 
 ;

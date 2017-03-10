@@ -239,31 +239,21 @@ KeyF4   ret			; Back to mainloop
 ; row>toprow	(row-1)-toprow is not carry
 ;
 KeyUp
-	ld	A,(row)
-	cp	A,0
-	jp	NZ,KUnot0
-	ld	A,(row+1)
-	cp	A,0
-	jp	NZ,KUnot0
-	ret			; Back to mainloop
-KUnot0
-	ld	HL,(row)	; (row
-	dec	HL		;  -1)
-	ld	BC,(toprow)
-	or 	A
-	sbc 	HL,BC		; -toprow
-	jp 	C, KU1		; Carry means NOT row>toprow
+	ld	HL,(row)	; return if row==0
+	ld	A,H
+	or	A,L
+	ret	Z
 
-	ld	HL,(row)	; row--
-	dec	HL
+	dec	HL		; row=row-1
 	ld	(row),HL
-	ret			; Back to mainloop
 
-KU1
-	ld	HL,(row)	; row--
-	dec	HL
-	ld	(row),HL
-	ld	(toprow),HL	; toprow=row
+	ld	BC,(toprow)	; If row>=toprow then return
+	or 	A		; Check by doing row-toprow
+	sbc 	HL,BC		; Carry is not set when row is larger
+	ret 	NC		; or equal to toprow
+
+	dec	BC		; toprow=toprow-1
+	ld	(toprow),BC	; toprow=row
 	call	ScrollAtTop
 	call	RefreshTopLine
 	ret			; Back to mainloop
@@ -334,9 +324,8 @@ RefreshFullScreen:
 	ld	IX,DFCB+1	; Start of filename in File Control Block
 	ld	B,8		; First part is 8 characters
 	call	PrintNoSpaceBfromIX
-	ld	E,'.'		; Print the dot between filname & extension
-	ld	C,DIRCIO
-	call	BDOS
+	ld	A,'.'		; Print the dot between filname & extension
+	call	PrintA
 	ld 	B,3		; Then print the extension
 	call	PrintNoSpaceBfromIX
 
@@ -346,23 +335,26 @@ RefreshFullScreen:
 
 
 ;
-;
+; This redraws the first line of the editing part of the screen
+; when it has scrolled.
 ;
 RefreshTopLine:
 	call	SetHLtoAddressOfTopRow
-	ld	BC,0100h	;B=row, C=col
+	ld	BC,XY_EDITTOP
 	jp	RefreshSingleLine
 
+
 ;
-;
+; This redraws the last line on the editing part of the screen
+; when it has scrolled.
 ;
 RefreshBottomLine:
-	ld	HL,(toprow)	; Jump to offset toprow*2 to adjust for
-	ld	BC,22		; Offset down to the last line on screent
+	ld	HL,(toprow)	; Go down 22 lines down to adjust for
+	ld	BC,22		; the number of lines on the screen
 	add	HL,BC
 	ld	BC,HL
 	call	SetHLtoAddressOfRowBC
-	ld	BC,1800h	;B=row, C=col
+	ld	BC,XY_EDITBOT
 	jp	RefreshSingleLine
 
 ;
@@ -376,8 +368,8 @@ RefreshSingleLine:
 	call	GotoXY
 	pop	HL
 	call	PrintString0
-	ld	A,B
-	cp	A,80
+	ld	A,B		; If we aren't on the last column alread
+	cp	A,80		; we need to clear to end of line
 	call	NZ,ClearEOL
 	ret
 
@@ -388,7 +380,7 @@ RefreshEditScreen:
 	ld	HL,(toprow)	; toprow will be modified in this
 	push	HL		; function so we need to save it
 
-	ld	BC,0100h	;B=row, C=col
+	ld	BC,XY_EDITTOP
 
 RELoop:
 	push	BC
@@ -402,7 +394,7 @@ RELoop:
 	ld	(toprow),HL
 	inc	B		; Goto next row on screen
 	ld	A,B
-	cp	A,24		; at last row?
+	cp	A,23		; at last row?
 	jp	NZ,RELoop	; Nope, do some more printing
 
 	pop	HL		; Restore the saved toprow variable
@@ -516,14 +508,16 @@ MSG_FILENOTFOUND
 
 MSG_HEADER
 	;        01234567890123456789012345678901234567890123456789012345678901234567890123456789
-	;         FILENAME.EXT * Row 0001/0458 Col 22
+	;         FILENAME.EXT * Row 1234/0458 Col 22
 	DB	'              * Row ----/---- Col --                                            ',0
 
-XY_NAME EQU	00*256 + 1
-XY_ROW 	EQU	00*256 + 20
-XY_MAXROW EQU	00*256 + 25
-XY_COL	EQU	00*256 + 34
+XY_NAME 	EQU	0FFh*256 + 1
+XY_ROW 		EQU	0FFh*256 + 20
+XY_MAXROW 	EQU	0FFh*256 + 25
+XY_COL		EQU	0FFh*256 + 34
 
+XY_EDITTOP	EQU	0*256+0
+XY_EDITBOT	EQU	22*256+0
 
 ;
 ; Variables
