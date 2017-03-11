@@ -20,8 +20,8 @@ LoadFile:
 	ld	IY,textBuf	; IY points to textBuf
 
 	ld	A,0FFh		; Set row to -1 so the SaveRowAddress
-	ld	(row),A		; can start by a increment row and have
-	ld	(row+1),A	; the first row end up indicating index 0
+	ld	(linecnt),A	; can start by a increment row and have
+	ld	(linecnt+1),A	; the first row end up indicating index 0
 
 	call	SaveRowAddress	; This first pointer must be save outside of
 				; the loop since they are written when a LF is
@@ -82,10 +82,10 @@ AtEOF:
 ;
 ;
 SaveRowAddress:
-	ld	HL,(row)	; row=row+1
+	ld	HL,(linecnt)	; linecnt++
 	inc	HL
-	ld	(row),HL
-	add	HL,HL		; multiply row*2 and add the address to the
+	ld	(linecnt),HL
+	add	HL,HL		; multiply linecnt*2 and add the address to the
 	ld	BC,txtPtrs	; txtPtrs
 	add	HL,BC		; HL now points to the slot in txtPtrs
 	push	IY		; IY holds the address to the line buffer

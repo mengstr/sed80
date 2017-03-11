@@ -61,9 +61,10 @@ PUTDMA	 EQU	26	; Set DMA Address DE=addr
 ; ASCII key codes
 ;
 CTRLB	EQU	'B'-40h	; ^B		- Key for testing
+CTRLG	EQU	'G'-40h ; ^G		- Goto line
 LF	EQU	'J'-40h	; ^J LF
 CR 	EQU 	'M'-40h	; ^M CR/ENTER
-CTRLQ	EQU	'Q'-40h	; ^Q		- Exit & Without save
+CTRLQ	EQU	'Q'-40h	; ^Q		- Quit without save
 CTRLR	EQU	'R'-40h	; ^R		- Refresh screen
 CTRLW	EQU	'W'-40h	; ^W		- Delete next word to the right
 CTRLX	EQU	'X'-40h	; ^X		- Exit & Save
@@ -212,6 +213,14 @@ HandleArrowKeys:
 	jp	Z,KeyRight
 	cp 	A,'D'		; ARROW LEFT ?
 	jp	Z,KeyLeft
+	cp	A,'5'		; PAGE UP
+	jp	Z,KeyPageUp
+	cp	A,'6'		; PAGE UP
+	jp	Z,KeyPageDown
+	cp	A,'1'		; HOME
+	jp	Z,KeyHome
+	cp	A,'4'		; END
+	jp	Z,KeyEnd
 	ret			; Go back to mainloop if unrecongized
 
 HandleFkeys:
@@ -301,13 +310,79 @@ KeyRight
 	ld 	(col),A
 	ret			; Back to mainloop
 
-KeyLeft
+KeyLeft:
 	ld	A,(col)
 	cp	A,0
 	ret	Z		; Back to mainloop
 	dec	A
 	ld 	(col),A
 	ret			; Back to mainloop
+
+
+KeyHome:
+	ld	HL,(row)
+	ld	A,L		; Check if already at first line
+	or	A,H
+	ret	Z		; If so then just return
+
+	ld	HL,0
+	ld	(row),HL
+	ld	(toprow),HL
+	jp	RefreshEditScreen
+
+KeyPageUp:
+	ld	HL,(row)
+	ld	A,L		; Check if already at first line
+	or	A,H
+	ret	Z		; If so then just return
+
+	ld	B,20		; Else go up 20 lines and stop if reach line 0
+KPU1
+	dec	HL
+	ld	A,L
+	or	A,H
+	jp	Z,KPU2
+	djnz	KPU1
+KPU2
+	ld	(row),HL
+	ld 	(toprow),HL
+	jp	RefreshEditScreen
+
+
+KeyPageDown:
+	ld	HL,(row)	; row=row+20
+	ld	BC,20
+	add	HL,BC
+	ld	(row),HL
+
+	ld	BC,(linecnt)	; Have we passed by the end?
+	or	A		; If row-linecnt is not carry then passed by
+	sbc	HL,BC
+	jp	C,KPD0		; Jump if still within bounds
+	ld	(row),BC	; row=linecnt
+KPD0:
+	ld	HL,(row)	; toprow=row-22
+	ld	BC,22
+	or	A
+	sbc	HL,BC
+	jp	NC,KPD1		; If negative result set..
+	ld	HL,0		; ... toprow=0
+KPD1	ld	(toprow),HL
+	jp	RefreshEditScreen
+
+
+
+KeyEnd:
+	ld	HL,(linecnt)
+	ld	(row),HL	; row=linecnt
+	ld	BC,22		; toprow=linecnt-22
+	or	A
+	sbc	HL,BC
+	jp	NC,KE1		; If negative result set..
+	ld	HL,0		; ... toprow=0
+KE1	ld	(toprow),HL
+	jp	RefreshEditScreen
+
 
 ;
 ;
@@ -508,14 +583,15 @@ MSG_FILENOTFOUND
 	DB	CR,LF,"File not found",CR,LF,0
 
 MSG_HEADER
+	;                  1         2         3         4         5         6         7
 	;        01234567890123456789012345678901234567890123456789012345678901234567890123456789
-	;         FILENAME.EXT * Row 1234/0458 Col 22
-	DB	'              * Row ----/---- Col --                                            ',0
+	;        *FILENAME.EXT  Row 1234/0458 Col 22 Comnd:
+	DB	'               Row ----/---- Col --                                            ',0
 
 XY_NAME 	EQU	0FFh*256 + 1
-XY_ROW 		EQU	0FFh*256 + 20
-XY_MAXROW 	EQU	0FFh*256 + 25
-XY_COL		EQU	0FFh*256 + 34
+XY_ROW 		EQU	0FFh*256 + 19
+XY_MAXROW 	EQU	0FFh*256 + 24
+XY_COL		EQU	0FFh*256 + 33
 
 XY_EDITTOP	EQU	0*256+0
 XY_EDITBOT	EQU	22*256+0
@@ -523,7 +599,7 @@ XY_EDITBOT	EQU	22*256+0
 ;
 ; Variables
 ;
-MAXROWS	EQU	1024
+MAXROWS	EQU	2000
 
 guard1	DB	'@'
 editBuf	DS	81	; Copy of the line being edited
@@ -535,6 +611,7 @@ cnt	DS	1	; Generic counter
 toprow	DS	2	; The first line to be displayed on screen
 row 	DS	2	; Current row/line in the editor
 col 	DS	1	; Current column in the editor
+linecnt	DS	2	; Number of lines
 txtPtrs	DS	MAXROWS*2 ; Pointers to the beginning of each line
 textBuf	EQU	$	; Start of the loaded file being edited
 

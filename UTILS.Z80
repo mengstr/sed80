@@ -138,8 +138,8 @@ ShowRowCol:
 
 	ld	BC, XY_MAXROW	; Coordinates for the MaxRows-field
 	call	GotoXY
-	ld 	HL, (toprow)	; Get the value and incremet by one since
-	inc	HL		; we want 1,1 displayed instead of 0,0
+	ld 	HL, (linecnt)	; Get the value and incremet by one since
+;	inc	HL		; we want 1,1 displayed instead of 0,0
 	call 	PrintDec4
 
 	ld	BC, XY_COL	; Coordinates for the Column field
