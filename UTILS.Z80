@@ -38,7 +38,8 @@ ClearMemory:
 	sbc	HL,BC
 	ld	BC,128		; Need to bump if down a bit, don't
 	sbc	HL,BC		; know why. ISSUE#1
-	ld	BC,HL		; BC=length of block in bytes
+	ld	B,H		; BC=length of block in bytes
+	ld	C,L
 
 	ld	HL,VARIABLES	; HL=start address of block
 	ld 	E,L			; DE=HL+1

@@ -78,8 +78,8 @@ EOF	EQU	'Z'-40h
 	ORG 0100h
 	jp	Start
 
-#include "UTILS.Z80"
-#include "FILE.Z80"
+	INCLUDE "UTILS.Z80"
+	INCLUDE "FILE.Z80"
 
 Start:
 	call	LoadFile
@@ -127,16 +127,15 @@ MainLoop:
 
 	jp	MainLoop
 
-
-CopyCurrentLineToEditBuf1:
-	call 	CopyCurrentLineToEditBuf
+CpLineToEditbuf1:
+	call 	CpLineToEditbuf
 	jp	MainLoop
 
 ;
 ; Fill editBuf with <space> terminated by <nul>
 ; Copy the text from current row into editBuf
 ;
-CopyCurrentLineToEditBuf:
+CpLineToEditbuf:
 	ld	BC,80		;Fill 80 characers with space
 	ld	HL,editBuf	; HL=start address of block
 	ld 	E,L		; DE=HL+1
@@ -147,7 +146,7 @@ CopyCurrentLineToEditBuf:
 	ld	(HL),0		; Terminate editBuf with a 0 at the end
 
 	; Get the source HL adddress from <row>
-	call	SetHLtoAddressOfRow
+	call	AddressOfRow
 
 	; Set destination DE to the start of the edit buffer
 	ld	DE,editBuf	; HL=start address of block
@@ -168,16 +167,17 @@ CCLL:
 ; Returns with HL pointing to the first character of <row>
 ; Destroys BC
 ;
-SetHLtoAddressOfRow:
+AddressOfRow:
 	ld	BC,(row)	;
-SetHLtoAddressOfRowBC:
+AddressOfRowBC:
 	ld	HL,txtPtrs	; HL=&txtPtrs
 	add	HL,BC		; HL=HL+BC*2 (skip to the pointer for "row")
 	add	HL,BC
 	ld	B,(HL)		; BC=*HL
 	inc	HL
 	ld	C,(HL)
-	ld	HL,BC		; HL=BC
+	ld	H,B		; HL=BC
+	ld	L,C
 	ret
 
 ;
@@ -185,9 +185,9 @@ SetHLtoAddressOfRowBC:
 ; I.E the first line on screen
 ; Destroys BC
 ;
-SetHLtoAddressOfTopRow:
+AddressOfTopRow:
 	ld	BC,(toprow)	;
-	jp	SetHLtoAddressOfRowBC
+	jp	AddressOfRowBC
 
 HandleSaveExit:
 	call	SaveFile
@@ -415,7 +415,7 @@ RefreshFullScreen:
 ; when it has scrolled.
 ;
 RefreshTopLine:
-	call	SetHLtoAddressOfTopRow
+	call	AddressOfTopRow
 	ld	BC,XY_EDITTOP
 	jp	RefreshSingleLine
 
@@ -428,8 +428,9 @@ RefreshBottomLine:
 	ld	HL,(toprow)	; Go down 22 lines down to adjust for
 	ld	BC,22		; the number of lines on the screen
 	add	HL,BC
-	ld	BC,HL
-	call	SetHLtoAddressOfRowBC
+	ld	B,H		; BC=HL
+	ld	C,L
+	call	AddressOfRowBC
 	ld	BC,XY_EDITBOT
 	jp	RefreshSingleLine
 
@@ -460,7 +461,7 @@ RefreshEditScreen:
 
 RELoop:
 	push	BC
-	call 	SetHLtoAddressOfTopRow
+	call 	AddressOfTopRow
 	pop	BC
 	push	BC
 	call	RefreshSingleLine

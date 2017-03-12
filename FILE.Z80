@@ -90,7 +90,6 @@ SaveRowAddress:
 	add	HL,BC		; HL now points to the slot in txtPtrs
 	push	IY		; IY holds the address to the line buffer
 	pop	BC		; Copy IY-> to BC so we can store the address
-	ld	(HL),BC
 	ld	(HL),B		; Store high part of address
 	inc	HL
 	ld	(HL),C		; Store low part of address
@@ -186,12 +185,11 @@ SaveFile:
 	ld	DE,dbuf		; DE points to the next space in disk buffer
 
 	; Write data to it
-	ld	B,0		; BC keeps track of the current line being
-	ld	C,0		; output to disk
-
+	ld	BC,0		; BC keeps track of the current line being
+				; output to disk
 WDLOOP1:
 	push	BC		; HL points to the source text
-	call	SetHLtoAddressOfRowBC
+	call	AddressOfRowBC
 	pop	BC
 	ld	A,H		; If HL==0 then we're at end of 'file'
 	or	A,L
