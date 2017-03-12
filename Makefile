@@ -5,6 +5,7 @@ ESPPORT		?= /dev/ttyUSB0
 ESPTOOL		=  /opt/esptool/esptool.py
 ZASM		=  /usr/local/bin/zasm
 SERIAL		=  /usr/bin/putty
+SED		=  /bin/sed
 
 FLAGSHEX	= --z80 -v2 -u -w -x
 FLAGSBIN	= --z80 -v2 -u -w -b
@@ -25,10 +26,10 @@ $(TARGET).hex: $(SRCS)
 	@tail -n +2 /tmp/zasm.tmp > $@
 
 prepare:
-	@echo -n Reset...
+	@echo -n Reset..
 	@$(ESPTOOL) --baud $(EMULATIONBAUD) --port $(ESPPORT) --chip esp8266 --no-stub --after soft_reset read_mac > /dev/null
 	@sleep 0.5
-	@echo -n Autobaud...
+	@echo -n Autobaud..
 	@echo -n -e "\x0d" > /dev/ttyUSB0
 	@sleep 0.25
 	@echo -n -e "\x0d" > /dev/ttyUSB0
@@ -37,26 +38,43 @@ prepare:
 	@sleep 0.25
 	@echo -n -e "\x0d" > /dev/ttyUSB0
 	@sleep 0.25
-	@echo -n Boot...
+	@echo -n Boot..
 	@echo "B" > /dev/ttyUSB0
 	@sleep 0.25
-	@echo -n CD...
+	@echo -n CD..
 	@echo "I:" > /dev/ttyUSB0
 	@sleep 0.25
 
 
 xfer:
-	@echo -n PIP...
+	@echo -n ERA..
+	@echo "ERA $(THEFILE)" > /dev/ttyUSB0
+	@sleep 0.25
+	@echo -n PIP..
 	@echo "A:PIP I:$(THEFILE)=CON:" > /dev/ttyUSB0
 	@sleep 0.25
 ifdef INTERACTIVE
 	@echo -n UPLOAD ---%
 	@$(eval LINES=$(shell cat $(THEFILE) | wc -l))
-	@cnt=0;while IFS= read -r line;do cnt=$$(( cnt+100)); printf "\b\b\b\b%3d%%" $$(( $$cnt/$(LINES) )); echo -e "$$line\r">/dev/ttyUSB0;sleep 0.01; done < $(THEFILE)
+	@cnt=0; \
+	cat $(THEFILE) | \
+	$(SED) -e '/INCLUDE/s/\"//g' | \
+	while IFS= read -r line;do \
+		cnt=$$(( cnt+100)); \
+		printf "\b\b\b\b%3d%%" $$(( $$cnt/$(LINES) )); \
+		echo -n "$$line" > /dev/ttyUSB0; \
+		echo -n -e "\r\n" > /dev/ttyUSB0; \
+		sleep 0.01; \
+	done
 	@echo -n " "
 else
-	@echo -n UPLOAD...
-	@cnt=0;while IFS= read -r line;do echo -e "$$line\r">/dev/ttyUSB0;sleep 0.01; done < $(THEFILE)
+	@echo -n UPLOAD..
+	@cat $(THEFILE) | \
+	$(SED) -e '/INCLUDE/s/\"//g' | \
+	while IFS= read -r line;do \
+		echo -e "$$line\r" > /dev/ttyUSB0; \
+		sleep 0.01; \
+	done
 endif
 	@echo -e "\x1A" > /dev/ttyUSB0
 
@@ -93,5 +111,3 @@ clean:
 	@echo "[clean]"
 	@rm -rf *~
 	@rm -rf *.{rom,bin,hex,lst}
-
-
