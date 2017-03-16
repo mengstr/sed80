@@ -95,15 +95,15 @@ upload:
 	@echo ""
 	@echo -n "[SED80.Z80] "
 	@$(MAKE) --no-print-directory xfer THEFILE=SED80.Z80
-	@sleep 10
+	@sleep 2
 	@echo ""
 	@echo -n "[FILE.Z80] "
 	@$(MAKE) --no-print-directory xfer THEFILE=FILE.Z80
-	@sleep 10
+	@sleep 2
 	@echo ""
 	@echo -n "[UTILS.Z80] "
 	@$(MAKE) --no-print-directory xfer THEFILE=UTILS.Z80
-	@sleep 10
+	@sleep 2
 	@echo ""
 	@$(SERIAL) -load cpm8266 -sercfg $(EMULATIONBAUD)
 
