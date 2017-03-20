@@ -6,7 +6,7 @@ GetChar:
 	ld	C,DIRCIO
 	ld 	E,0FFh		; FF=Read, FE=Status
 	call	BDOS
-	cp 	A,00h		; No char available?
+	cp	00h		; No char available?
 	jp 	Z,GetChar	; Loop until got a char
 	ret
 
@@ -67,12 +67,12 @@ PrintString0A:
 ;
 ; Prints the 'B' bytes long string pointed to by IX, but no spaces
 ;
-PrintNoSpaceBfromIX
+PrintNoSpaceBfromIX:
 	push	BC
-	ld	A,(IX)		; Get character pointed to by IX
+	ld	A,(IX+0)	; Get character pointed to by IX
 	ld	E,A
 	ld	C,DIRCIO
-	cp	A,' '		; Don't print spaces
+	cp	' '		; Don't print spaces
 	call	NZ,BDOS
 	pop	BC
 	inc	IX		; Advance to next character
@@ -254,23 +254,23 @@ PrintDecB:
 ;Input: HL = number to convert, DE = location of ASCII string
 ;Output: ASCII string at (DE)
 ;
-NumAscii5
+NumAscii5:
 	ld	BC,-10000
 	call	NA1
-NumAscii4
+NumAscii4:
 	ld	BC,-1000
 	call	NA1
-NumAscii3
+NumAscii3:
 	ld	BC,-100
 	call	NA1
-NumAscii2
+NumAscii2:
 	ld	BC,-10
 	call	NA1
-NumAscii1
+NumAscii1:
 	ld	BC,-1
 
-NA1	ld	A,'0'-1
-NA2	inc	A
+NA1:	ld	A,'0'-1
+NA2:	inc	A
 	add	HL,BC
 	jr	C,NA2
 	sbc	HL,BC

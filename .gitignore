@@ -15,10 +15,12 @@
 *.hex
 *.bin
 *.rom
+*.tmp
 
-# Other generate files
+# Other generated files
 *.log
 *.zip
+*.cap
 
 # Private folders
 private/

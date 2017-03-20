@@ -3,12 +3,9 @@ EMULATIONBAUD	=  9600
 ESPPORT		?= /dev/ttyUSB0
 
 ESPTOOL		=  /opt/esptool/esptool.py
-ZASM		=  /usr/local/bin/zasm
+ASM		=  /usr/bin/z80asm
 SERIAL		=  /usr/bin/putty
 SED		=  /bin/sed
-
-FLAGSHEX	= --z80 -v2 -u -w -x
-FLAGSBIN	= --z80 -v2 -u -w -b
 
 TARGET		= SED80
 SRCS		= $(wildcard *.Z80)
@@ -20,10 +17,11 @@ all: $(TARGET).hex
 full: clean flash
 
 $(TARGET).hex: $(SRCS)
-	@echo [ZASM] $<
-	@$(ZASM) $(FLAGSHEX) $(TARGET).Z80 -o $@
-	@srec_cat $@ -intel -offset 0x100 -o /tmp/zasm.tmp -intel
-	@tail -n +2 /tmp/zasm.tmp > $@
+	@echo [Z80ASM] $<
+	@$(ASM) $(FLAGSHEX) $(TARGET).Z80 -o tmp1.tmp
+	@srec_cat tmp1.tmp -binary -offset 0x100 -o tmp2.tmp -intel
+	@tail -n +2 tmp2.tmp > $@
+	@sed -i '/:......000000000000000000000000000000000000000000000000000000000000000000..$$/d' $@
 
 prepare:
 	@echo -n Reset..
@@ -109,5 +107,5 @@ upload:
 
 clean:
 	@echo "[clean]"
-	@rm -rf *~
-	@rm -rf *.{rom,bin,hex,lst}
+	@rm -rf *~ 
+	@rm -rf *.{cap,log,tmp,rom,bin,hex,lst}

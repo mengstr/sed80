@@ -28,14 +28,14 @@ LoadFile:
 				; found in the text - and there is no LF at the
 				; beginning of the first line.
 
-GetFirstSector
+GetFirstSector:
 	ld 	A,0		; Start reading from block 0
 	ld	(DFCBcr),A
-GetNextSector
+GetNextSector:
 	ld  	DE,DFCB		; File Description Block
 	ld 	C,READSEQ
 	call	BDOS		; Returns A=0 if ok
-	cp	A,0
+	cp	0
 	jp	NZ,AtEOF
 
 	ld	DE,dbuf		; Reset DMA address to our buffer
@@ -47,9 +47,9 @@ GetNextSector
 	ld 	(cnt),A
 
 foo:	ld	A,(IX+0)	; Get next char from disk buf
-	cp	A,CR
+	cp	CR
 	jp	Z,doNextChar
-	cp	A,LF
+	cp	LF
 	jp	Z,theEol
 apa:
 	ld	(IY+0),A
@@ -172,7 +172,6 @@ SaveFile:
 	inc 	A
 	jp	Z,FailClose
 
-
 	; Create new FILENAME.<original_extension>
 	ld  	DE,DFCB		; Create new file
 	ld 	A,0		; Start at block 0
@@ -192,12 +191,12 @@ WDLOOP1:
 	call	AddressOfRowBC
 	pop	BC
 	ld	A,H		; If HL==0 then we're at end of 'file'
-	or	A,L
+	or	L
 	jp	Z,WDFLUSHLAST
 
 WDLOOP2:
 	ld	A,(HL)		; Get char to save
-	cp	a,0		; If zero then at end of this line
+	cp	0		; If zero then at end of this line
 	jp	Z,WDEOL
 	call	WriteCharToDisk	; If not write charecter to disk
 	inc	HL		; Point to next character...
@@ -216,7 +215,7 @@ WriteCharToDisk:
 	ld	(DE),A		; Store the character to disk buf
 	inc	DE		; Point to next char in disk buf
 	ld	A,E		; Reached end of disk buf yet?
-	cp	A,0
+	cp	0
 	ret	NZ		; No, just return
 
 	; Yes, flush the buf to disk, but save registers first
@@ -230,7 +229,7 @@ WriteCharToDisk:
 	ld  	DE,DFCB		; File Description Block
 	ld 	C,WRTSEQ
 	call	BDOS		; Returns A=0 if ok
-	cp	A,0
+	cp	0
 	jp	NZ,FailWrite
 
 	pop	hl		; Restore registers that the BDOS...
@@ -241,7 +240,7 @@ WriteCharToDisk:
 	; Flush the last sector to disk
 WDFLUSHLAST:
 	ld	A,E		; Are we at beginning of buffer now?
-	cp	A,80h		; dbuf starts at 080h
+	cp	80h		; dbuf starts at 080h
 	jp	Z,WDEND		; Yes, we're done flushing
 	ld	A,EOF
 	call	WriteCharToDisk
@@ -277,8 +276,8 @@ FailClose:
 	call	PrintString0
 	jp 	Exit
 
-MSG_FAILOPEN 	DB '\n\r\n\r\n\rFAILOPEN\r\n',0
-MSG_FAILCREATE 	DB '\n\r\n\r\n\rFAILCREATE\r\n',0
-MSG_FAILWRITE 	DB '\n\r\n\r\n\rFAILWRITE\r\n',0
-MSG_FAILRENAME 	DB '\n\r\n\r\n\rFAILRENAME\r\n',0
-MSG_FAILCLOSE 	DB '\n\r\n\r\n\rFAILCLOSE\r\n',0
+MSG_FAILOPEN: 	DB '\n\r\n\r\n\rFAILOPEN\r\n',0
+MSG_FAILCREATE: DB '\n\r\n\r\n\rFAILCREATE\r\n',0
+MSG_FAILWRITE: 	DB '\n\r\n\r\n\rFAILWRITE\r\n',0
+MSG_FAILRENAME: DB '\n\r\n\r\n\rFAILRENAME\r\n',0
+MSG_FAILCLOSE: 	DB '\n\r\n\r\n\rFAILCLOSE\r\n',0
