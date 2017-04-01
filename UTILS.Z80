@@ -11,15 +11,22 @@ GetChar:
 	ret
 
 ;
-;
+; Display File Not Found message and exit application
 ;
 FileNotFound:
 	ld	HL,MSG_FILENOTFOUND
 	call	PrintString0
+	jp	Exit
+
+
+;
+; Set scroll area to full screen, go to bottom of screen
+; and exit to CP/M
+;
 Exit:
 	ld	HL,MSG_RESTORESCROLL
 	call	PrintString0
-	ld	BC,23*256+0
+	ld	BC,(23<<8)+0
 	call	GotoXY
 	call	ClearEOL
 	jp	RESET
@@ -96,6 +103,20 @@ PrintA:
 	ret
 
 ;
+; Position cursor on screen according to the row/col and
+; taking toprow into consideration
+;
+SetCursor:
+	call	GetScreenLineToHL
+	ld	B,L		; B is line
+	ld	A,(col)		; C is column
+	ld	C,A
+	call	GotoXY
+	ret
+
+;
+; Move cursor to the specified location on screen
+;
 ;	B=LINE 		FFh=Header, 00h..16h=Editor lines
 ;	C=COLUMN	00h..4Fh
 ;
@@ -168,21 +189,21 @@ NormalText:
 	jp	PrintString0
 
 ;
-;
+; Output the Clean To End-Of-Line code
 ;
 ClearEOL:
 	ld	HL,MSG_CLREOL
 	jp 	PrintString0
 
 ;
-;
+; Output the codes for shift all lines down 1 row
 ;
 ScrollAtTop:
 	ld	HL,MSG_SHIFT_DOWN
 	jp	PrintString0
 
 ;
-;
+; Output the code for shifting all lines up 1 row
 ;
 ScrollAtBottom:
 	ld	HL,MSG_SHIFT_UP
@@ -198,19 +219,6 @@ GetScreenLineToHL:
 	ld	BC,(toprow)
 	or	A
 	sbc	HL,BC
-;	inc	HL		; Adjust for first line being 1
-	ret
-
-;
-; Position cursor on screen according to the row/col and
-; taking toprow into consideration
-;
-SetCursor:
-	call	GetScreenLineToHL
-	ld	B,L		; B is line
-	ld	A,(col)		; C is column
-	ld	C,A
-	call	GotoXY
 	ret
 
 ;
@@ -278,16 +286,4 @@ NA2:	inc	A
 	ld	(DE),A
 	inc	DE
 	ret
-
-
-
-;StrCopy:
-;;Copy zero terminated string at HL to DE.
-;;Destroys AF, DE, HL
-;	xor	a		;4
-;docopystr:
-;	cp	(hl)		;7
-;	ldi			;16
-;	jr	nz,docopystr	;12
-;	ret			;5
 

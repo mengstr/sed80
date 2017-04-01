@@ -1,0 +1,127 @@
+;
+; Returns with HL pointing to the first character of <toprow>
+; I.E the first line on screen
+; Destroys BC
+;
+AddressOfTopRow:
+	ld	BC,(toprow)	;
+	jp	AddressOfRowBC
+
+
+;
+; Returns with HL pointing to the first character of <row>
+; Destroys BC
+;
+AddressOfRow:
+	ld	BC,(row)	;
+AddressOfRowBC:
+	ld	HL,txtPtrs	; HL=&txtPtrs
+	add	HL,BC		; HL=HL+BC*2 (skip to the pointer for "row")
+	add	HL,BC
+	ld	C,(HL)		; BC=*HL
+	inc	HL
+	ld	B,(HL)
+	ld	H,B		; HL=BC
+	ld	L,C
+	ret
+
+;
+; Fill editBuf with <space> terminated by <nul>
+; Copy the text from current row into editBuf
+;
+CpLineToEditbuf:
+	ld	BC,MAXLEN	;Fill entire buffer characers with space
+	ld	HL,editBuf	; HL=start address of block
+	ld 	E,L		; DE=HL+1
+	ld 	D,H
+	inc 	DE
+	ld 	(HL),20h	; initialise first byte of block with data
+	ldir   			; Now blast-fill the memory!
+	ld	(HL),0		; Terminate editBuf with a 0 at the end
+
+	; Get the source HL adddress from <row>
+	call	AddressOfRow
+
+	; Set destination DE to the start of the edit buffer
+	ld	DE,editBuf	; HL=start address of block
+
+	; Copy characters until <nul>
+CCLL:
+	ld	A,(HL)
+	cp	0
+	ret	Z
+	ld	(DE),A
+	inc	DE
+	inc	HL
+	jp	CCLL
+
+;
+; BC = line number
+;
+InsertEditBufAtBC:
+	push	BC
+
+	; Start by making a hole in the txtPtrs array by bumping up
+	; all entries one step (two bytes)
+	ld	HL,MAXROWS-1	; BC=((MAXROWS-1)-line#)*2
+	or	A
+	sbc	HL,BC
+	add	HL,HL
+	ld	B,H
+	ld	C,L
+
+	ld	DE,txtPtrs+MAXROWS*2-1
+	ld	H,D		;HL=DE-2
+	ld	L,E
+	dec	HL
+	dec	HL
+	lddr			; Do the moving. Takes 21 cycles per byte
+				; moved. 21*4000=84Kcyc=~8.5ms
+
+	; Fill the hole in the array with the address of some free memory
+	pop	BC
+	push	BC
+	ld	HL,txtPtrs	; HL=txtPtr+(line#*2),
+	add	HL,BC
+	add	HL,BC
+
+	ld	DE,(freeMem)	; txtPtrs[line#]=freeMem
+	ld	(HL),E
+	inc	HL
+	ld	(HL),D
+
+	; Copy bytes from editBuf to the address pointed to by txtPtrs[line#]
+	; stop copying after the first \0
+	ld	DE,(freeMem)	; DE = freeMem = txtPtrs[line#]
+	ld	HL,editBuf	; HL = &editBuf
+
+xyz1:	ld	A,(HL)
+	ld	(DE),A
+	inc	HL
+	inc	DE
+	cp	0
+	jp	nz,xyz1
+
+	; Update the freeMem variable with DE that now holds the next free
+	; memory address
+	ld	(freeMem),DE
+
+	; Since we have inserted a new line we need to increment linecnt
+	ld	HL,linecnt	; linecnt++
+	inc	(HL)
+
+	pop	BC
+	ret
+
+;
+;Copy zero terminated string at HL to DE.
+;Destroys AF, DE, HL
+;
+StrCopy:
+	xor	A
+strcpy1:
+	cp	(HL)
+	ldi
+	jr	NZ,strcpy1
+	ret
+

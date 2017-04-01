@@ -1,0 +1,64 @@
+;
+; Static text/message strings
+;
+
+MSG_SHIFT_DOWN:
+	DB	ESC,'[2;24r',ESC,'[2;1H',ESC,'M',0
+
+MSG_SHIFT_UP:
+	DB	ESC,'[2;24r',ESC,'[24;1H',ESC,'D',0
+
+MSG_NEWLINE_AT:
+	DB	ESC,'[__;24r',ESC,'[__;1H',ESC,'M',0
+
+MSG_DELLINE_AT:
+	DB	ESC,'[__;24r',ESC,'[24;1H',ESC,'D',0
+
+MSG_RESTORESCROLL:
+	DB 	ESC,'[r',0
+
+MSG_CLEAR:
+	DB	ESC,'[2J',ESC,'[H',0
+
+MSG_INVERSETEXT:
+	DB	ESC,'[7m',0
+
+MSG_NORMALTEXT:
+	DB	ESC,'[0m',0
+
+MSG_CLREOL:
+	DB	ESC,'[K',0
+
+MSG_FILENOTFOUND:
+	DB	CR,LF,"File not found",CR,LF,0
+
+MSG_FAILOPEN:
+	DB '\n\r\n\rFAILOPEN\r\n',0
+
+MSG_FAILCREATE:
+	DB '\n\r\n\rFAILCREATE\r\n',0
+
+MSG_FAILWRITE:
+	DB '\n\r\n\rFAILWRITE\r\n',0
+
+MSG_FAILRENAME:
+	DB '\n\r\n\rFAILRENAME\r\n',0
+
+MSG_FAILCLOSE:
+	DB '\n\r\n\rFAILCLOSE\r\n',0
+
+MSG_HEADER:
+	;                  1         2         3         4         5         6         7
+	;        01234567890123456789012345678901234567890123456789012345678901234567890123456789
+	;        *FILENAME.EXT  Row 1234/0458 Col 123 GOTO:
+	DB	'               Row ----/---- Col --                                             ',0
+
+XY_NAME:	EQU	(0FFh<<8) + 1
+XY_ROW:		EQU	(0FFh<<8)+ 19
+XY_MAXROW: 	EQU	(0FFh<<8)+ 24
+XY_COL:		EQU	(0FFh<<8)+ 33
+XY_CMDTXT:	EQU	(0FFh<<8)+ 37	; GOTO: FIND: QUIT?
+XY_CMD:		EQU	(0FFh<<8)+ 42
+
+XY_EDITTOP:	EQU	(0<<8) + 0
+XY_EDITBOT:	EQU	(22<<8) + 0

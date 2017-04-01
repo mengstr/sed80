@@ -1,100 +1,86 @@
 ;
+; Clear all memory and load the specified file into memory.
 ;
+; The file is read character-by-character into the editBuf (~132 chars max)
+; and then transferred into the big textBuf with a pointer to the line
+; stored in the linePtrs[]-array.
 ;
 LoadFile:
 	call	ClearMemory	; Make sure the buffers and pointers are
 				; emptied
 
-	ld  	DE,DFCB		; Open the file using the name that CCP
+	ld 	HL,freeMem	; The freeMem variable points to the next
+	ld	(HL),textBuf&0FFh; free/unused byte in the big textBuf area
+	inc	HL
+	ld	(HL),textBuf>>8
+
+	ld  	DE,DFCB		; Try opening the file using the name that CCP
 	ld 	C,OPENFIL	; conveniently inserted for us
 	call	BDOS		; Returns A in 255 if error opening
 	inc 	A
-	jp	Z,FileNotFound
+	jp	Z,FileNotFound	; Print error message and exit if no file
 
-;
-; IX 	Src pointer into the disk read buffer
-; IY 	Dst pointer into the text buf in memory
-; cnt 	Keeps track of the bytes in each sector
-;
+; IY 	Dst pointer into the editBuf-memory
+; IX 	Src pointer into the disk sector  buffer
+; cnt 	Keeps track of the 128 bytes in each sector
 
-	ld	IY,textBuf	; IY points to textBuf
-
-	ld	A,0FFh		; Set row to -1 so the SaveRowAddress
-	ld	(linecnt),A	; can start by a increment row and have
-	ld	(linecnt+1),A	; the first row end up indicating index 0
-
-	call	SaveRowAddress	; This first pointer must be save outside of
-				; the loop since they are written when a LF is
-				; found in the text - and there is no LF at the
-				; beginning of the first line.
-
+	ld	IY,editBuf	; IY points to editbuf for reading each line
+				; into there before storing it in the big
+				; textBuf memory
 GetFirstSector:
 	ld 	A,0		; Start reading from block 0
 	ld	(DFCBcr),A
-GetNextSector:
-	ld  	DE,DFCB		; File Description Block
-	ld 	C,READSEQ
-	call	BDOS		; Returns A=0 if ok
-	cp	0
-	jp	NZ,AtEOF
 
-	ld	DE,dbuf		; Reset DMA address to our buffer
+GetNextSector:
+	ld	A,128		; The sector have 128 bytes that should be
+	ld 	(cnt),A		; handled one-by-one
+
+	ld	IX,dbuf		; Point to beginning of the sector buffer
+
+	ld	DE,dbuf		; Reset DMA address to our sector buffer
 	ld 	C,PUTDMA
 	call	BDOS
 
-	ld	IX,dbuf		; Point to beginning of disk buffer
-	ld	A,128		; The sector have 128 bytes
-	ld 	(cnt),A
+	ld  	DE,DFCB		; Try to read the next sector of the file
+	ld 	C,READSEQ
+	call	BDOS		; Returns A=0 if ok
+	cp	0		; Reached end-of-file?
+	jp	NZ,AtEOF	; Yes, so jump to the finish up
 
-foo:	ld	A,(IX+0)	; Get next char from disk buf
-	cp	CR
-	jp	Z,doNextChar
-	cp	LF
-	jp	Z,theEol
-apa:
-	ld	(IY+0),A
-	inc	IY
-	jp	doNextChar
-theEol:
-	ld	A,0		; Store 0 at the end of line
-	ld	(IY+0),A
-	inc	IY		; bump up pointer
-	call	SaveRowAddress	; and save it into the line pointers array
-	jp	doNextChar
-
-doNextChar:
-	inc	IX		; Point to next char in disk buf
-	ld	A,(cnt)
-	dec 	A
-	ld	(cnt),A
-	jp	NZ,foo		; We still have more characters in current sector
+processChar:
+	ld	A,(IX+0)	; Get next char from disk buf
+	cp	CR		; Ignore any CR by just go and fetch...
+	jp	Z,goNextChar	; ..another character
+	cp	LF		; LF denotes End-Of-Line
+	jp	Z,doEol
+	ld	(IY+0),A	; Else just copy the character from the sector
+	inc	IY		; buffer into the editBuf'er, building up the
+				; full line. And then go and fetch another char
+goNextChar:
+	inc	IX		; Point to next character in sector buffer
+	ld	HL,cnt		; Decrement 128-byte counter
+	dec	(HL)
+	jp	NZ,processChar	; Yes, still got more chars in sector
 
 	jp	GetNextSector	; This sector is finished, get a new sector
 
+doEol:
+	ld	A,0
+	ld	(IY+0),A
+	inc	IY
+	ld	A,0		; Store 0 at the end of line
+	ld	(IY+0),A
+	ld	BC,(linecnt)
+	call	InsertEditBufAtBC
+	ld	IY,editBuf	; Point IY to start of editBuf again
+	jp	goNextChar	; And continue processing characters from
+				; the current sector
+
 AtEOF:
-	ld  	DE,DFCB		; File Description Block
+	ld  	DE,DFCB		; Close the file
 	ld 	C,CLOSEFIL
 	call	BDOS
-	ret
-
-
-;
-;
-;
-SaveRowAddress:
-	ld	HL,(linecnt)	; linecnt++
-	inc	HL
-	ld	(linecnt),HL
-	add	HL,HL		; multiply linecnt*2 and add the address to the
-	ld	BC,txtPtrs	; txtPtrs
-	add	HL,BC		; HL now points to the slot in txtPtrs
-	push	IY		; IY holds the address to the line buffer
-	pop	BC		; Copy IY-> to BC so we can store the address
-	ld	(HL),B		; Store high part of address
-	inc	HL
-	ld	(HL),C		; Store low part of address
-	ret
-
+	ret			; And we're done with the file loading
 
 ;
 ; Save <original_extension>
@@ -254,30 +240,28 @@ WDEND:
 
 	ret
 
-
 FailOpen:
 	ld	HL,MSG_FAILOPEN
 	call	PrintString0
 	jp 	Exit
+
 FailCreate:
 	ld	HL,MSG_FAILCREATE
 	call	PrintString0
 	jp 	Exit
+
 FailWrite:
 	ld	HL,MSG_FAILWRITE
 	call	PrintString0
 	jp 	Exit
+
 FailRename:
 	ld	HL,MSG_FAILRENAME
 	call	PrintString0
 	jp 	Exit
+
 FailClose:
 	ld	HL,MSG_FAILCLOSE
 	call	PrintString0
 	jp 	Exit
 
-MSG_FAILOPEN: 	DB '\n\r\n\r\n\rFAILOPEN\r\n',0
-MSG_FAILCREATE: DB '\n\r\n\r\n\rFAILCREATE\r\n',0
-MSG_FAILWRITE: 	DB '\n\r\n\r\n\rFAILWRITE\r\n',0
-MSG_FAILRENAME: DB '\n\r\n\r\n\rFAILRENAME\r\n',0
-MSG_FAILCLOSE: 	DB '\n\r\n\r\n\rFAILCLOSE\r\n',0
